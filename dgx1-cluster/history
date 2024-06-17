@@ -1,0 +1,166 @@
+    1  cd codes/
+    2  python 1_blender_render_mov_multiple_parabola
+    3  python 1_blender_render_mov_multiple_parabola.py 
+    4  ls
+    5  mv 1_blender_render_mov_multiple_parabola.py 1_blender_render_mov_multiple_parabola_temp.py
+    6  python 1_blender_render_mov_multiple_parabola_orig.py 
+    7  cd ..
+    8  ls
+    9  vim setup.bash
+   10  apt-get install vim
+   11  vim setup.bash
+   12  chmod 777 setup.bash 
+   13  ls
+   14  mv setup.bash codes/
+   15  cd codes/
+   16  ls
+   17  ./setup.bash 
+   18  python 1_blender_render_mov_multiple_parabola_temp.py 
+   19  ls
+   20  mv 1_blender_render_mov_multiple_parabola_temp.py 1_blender_render_mov_multiple_parabola.py
+   21  ls
+   22  mv 1_blender_render_mov_multiple_parabola.py 1_blender_render_mov_multiple_parabola_temp.py
+   23  ls
+   24  vim 1_blender_render_mov_multiple_parabola.py
+   25  python 1_blender_render_mov_multiple_parabola.py 
+   26  vim 1_blender_render_mov_multiple_parabola.py 
+   27  rm 1_blender_render_mov_multiple_parabola.py 
+   28  vim 1_blender_render_mov_multiple_parabola.py 
+   29  python 1_blender_render_mov_multiple_parabola.py 
+   30  vim test.py
+   31  python test.py 
+   32  ls
+   33  rm 1_blender_render_mov_multiple_parabola.py 
+   34  vim 1_blender_render_mov_multiple_parabola.py
+   35  python 1_blender_render_mov_multiple_parabola.py 
+   36  clear
+   37  ls
+   38  vim 1_blender_render_mov_multiple_parabola_modifications.py
+   39  clear
+   40  ls
+   41  python 1_blender_render_mov_multiple_parabola.py 
+   42  vim 1_blender_render_mov_multiple_parabola_modified.py
+   43  python 1_blender_render_mov_multiple_parabola_modified.py 
+   44  clear
+   45  ls
+   46  vim 1_blender_render_mov_multiple_parabola_split.py
+   47  python 1_blender_render_mov_multiple_parabola_split.py 
+   48  ls
+   49  rm 1_blender_render_mov_multiple_parabola_split.py 
+   50  vim 1_blender_render_mov_multiple_parabola_split.py
+   51  python 1_blender_render_mov_multiple_parabola_split.py 
+   52  ls ../input/all/carro_rojo/
+   53  rm 1_blender_render_mov_multiple_parabola_split.py 
+   54  vim 1_blender_render_mov_multiple_parabola_split.py
+   55  python 1_blender_render_mov_multiple_parabola_split.py 
+   56  cd ..
+   57  ls
+   58  cd output/
+   59  ls
+   60  rm -rf *
+   61  ls
+   62  cd output_frames/
+   63  ls
+   64  cd ..
+   65  ls
+   66  mv input/ input_2
+   67  exit
+   68  ls
+   69  cd codes/
+   70  ls
+   71  cat 1_blender_render_mov_multiple_parabola_modified.py 
+   72  wq!
+   73  python 1_blender_render_mov_multiple_parabola_modified.py 
+   74  cat 1_blender_render_mov_multiple_parabola_modified.py 
+   75  cd ..
+   76  cd output/
+   77  cd output_frames/
+   78  ls
+   79  rm -rf almohada/
+   80  cd ..
+   81  clear
+   82  ls
+   83  cd codes/
+   84  ls
+   85  rm 1_blender_render_mov_multiple_parabola_split.py 
+   86  vim 1_blender_render_mov_multiple_parabola_split.py 
+   87  python 1_blender_render_mov_multiple_parabola_split.py 
+   88  cd ..
+   89  cd output/
+   90  ls
+   91  cd output_frames/
+   92  ls
+   93  ls segment_0/
+   94  cd segment_0/
+   95  ls
+   96  cd ..
+   97  ls segment_*
+   98  cd segment_1/
+   99  ls
+  100  cd jarron/
+  101  ls -la
+  102  cd jarron_orientation_53_72_-73/
+  103  ls -la *
+  104  exit
+  105  rm -rf output/output_frames/*
+  106  cd codes/
+  107  ls
+  108  vim 1_blender_render_mov_multiple_parabola_split.py 
+  109  rm 1_blender_render_mov_multiple_parabola_split.py 
+  110  vim 1_blender_render_mov_multiple_parabola_split.py 
+  111  python 1_blender_render_mov_multiple_parabola
+  112  python 1_blender_render_mov_multiple_parabola.py 
+  113  python 1_blender_render_mov_multiple_parabola_split.py 
+  114  vim 1_blender_render_mov_multiple_parabola_split.py 
+  115  rm 1_blender_render_mov_multiple_parabola_split.py 
+  116  vim 1_blender_render_mov_multiple_parabola_split.py 
+  117  python 1_blender_render_mov_multiple_parabola_split.py 
+  118  cd ..
+  119  cd output/output_frames/
+  120  ls
+  121  ls -la
+  122  rm -rf almohada/
+  123  ls
+  124  cd segment_0/
+  125  ls
+  126  cd almohada/almohada_orientation_-35_59_92/
+  127  ls -la
+  128  exit
+  129  cd codes/
+  130  vim 1_blender_render_mov_multiple_parabola_split.py 
+  131  cd ../output/output_frames/*
+  132  rm -rf ../output/output_frames/*
+  133  python 1_blender_render_mov_multiple_parabola_split.py 
+  134  cd ..
+  135  ls -la output/output_frames/segment_0/almohada/almohada_orientation_163_-2_147/
+  136  exiy
+  137  exit
+  138  rm -rf output/output_frames/*
+  139  cd codes/
+  140  vim 1_blender_render_mov_multiple_parabola_split.py 
+  141  python 1_blender_render_mov_multiple_parabola_split.py 
+  142  cd ..
+  143  ls -la output/output_frames/
+  144  ls -la output/output_frames/segment_0/
+  145  ls -la output/output_frames/segment_0/almohada/almohada_orientation_-151_6_0/
+  146  exit
+  147  cd codes/
+  148  vim 1_blender_render_mov_multiple_parabola_split.py 
+  149  rm -rf 1_blender_render_mov_multiple_parabola_split.py 
+  150  vim 1_blender_render_mov_multiple_parabola_split.py 
+  151  cd ..
+  152  rm -rf output/output_frames/*
+  153  ls output/output_frames/
+  154  cd codes/
+  155  python 1_blender_render_mov_multiple_parabola_split.py 
+  156  cd ..
+  157  ls
+  158  cd codes/
+  159  rm -rf 1_blender_render_mov_multiple_parabola_split.py 
+  160  vim 1_blender_render_mov_multiple_parabola_split.py 
+  161  python 1_blender_render_mov_multiple_parabola_split.py 
+  162  rm -rf 1_blender_render_mov_multiple_parabola_split.py 
+  163  vim 1_blender_render_mov_multiple_parabola_split.py 
+  164  python 1_blender_render_mov_multiple_parabola_split.py 
+  165  clear
+  166  history

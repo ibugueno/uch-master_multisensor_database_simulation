@@ -1,0 +1,87 @@
+# Usa la imagen base de Ubuntu
+FROM ubuntu:20.04
+
+# Establece las variables de entorno necesarias
+ENV DEBIAN_FRONTEND=noninteractive
+ENV LIBGL_ALWAYS_SOFTWARE=1
+ENV MESA_LOADER_DRIVER_OVERRIDE=llvmpipe
+ENV DISPLAY=:99
+ENV LIBGL_DRIVERS_PATH=/usr/lib/x86_64-linux-gnu/dri
+
+# Actualiza los paquetes e instala dependencias
+RUN apt-get update && apt-get install -y \
+    wget \
+    curl \
+    bzip2 \
+    ca-certificates \
+    libglib2.0-0 \
+    libxext6 \
+    libsm6 \
+    libxrender1 \
+    git \
+    libglu1-mesa \
+    libxi6 \
+    libxxf86vm1 \
+    libdbus-1-3 \
+    libnss3 \
+    libxcomposite1 \
+    libxcursor1 \
+    libxdamage1 \
+    libxfixes3 \
+    libxrandr2 \
+    libasound2 \
+    sudo \
+    xz-utils \
+    libxkbcommon0 \
+    libxkbcommon-dev \
+    libgomp1 \
+    libegl1-mesa \
+    libgl1-mesa-glx \
+    libgl1-mesa-dri \
+    mesa-utils \
+    xvfb \
+    libffi7 && \
+    rm -rf /var/lib/apt/lists/*
+
+# Configura el renderizador de software
+ENV LIBGL_ALWAYS_SOFTWARE=1
+ENV MESA_LOADER_DRIVER_OVERRIDE=llvmpipe
+
+# Descarga e instala Blender 4.0.2
+RUN wget https://download.blender.org/release/Blender4.0/blender-4.0.2-linux-x64.tar.xz -O /tmp/blender.tar.xz && \
+    tar -xf /tmp/blender.tar.xz -C /opt && \
+    rm /tmp/blender.tar.xz
+
+# Añade Blender al PATH
+ENV PATH="/opt/blender-4.0.2-linux-x64:$PATH"
+
+# Descarga e instala Miniconda para x86_64
+RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O /tmp/miniconda.sh && \
+    /bin/bash /tmp/miniconda.sh -b -p /opt/conda && \
+    rm /tmp/miniconda.sh
+
+# Añade Miniconda al PATH
+ENV PATH="/opt/conda/bin:$PATH"
+
+# Crear y activar un entorno de conda con Python 3.10 e instalar bpy y scipy
+RUN /bin/bash -c "source /opt/conda/etc/profile.d/conda.sh && \
+    conda create -n blender python=3.10 -y && \
+    conda activate blender && \
+    pip install bpy==3.6.0 && \
+    pip install scipy"
+
+# Asegura que el entorno de conda esté activado
+RUN echo "source /opt/conda/etc/profile.d/conda.sh" >> ~/.bashrc && \
+    echo "conda activate blender" >> ~/.bashrc && \
+    echo "export DISPLAY=:99" >> ~/.bashrc && \
+    echo "export LIBGL_DRIVERS_PATH=/usr/lib/x86_64-linux-gnu/dri" >> ~/.bashrc && \
+    echo "ignacio_thesis_blender_simulation" 
+
+# Establece el directorio de trabajo
+WORKDIR /data
+
+# Crea los directorios necesarios
+RUN mkdir -p /data/input /data/output /data/codes
+
+# Inicia xvfb y el contenedor de bash
+CMD ["sh", "-c", "Xvfb :99 -screen 0 1024x768x24 & /bin/bash"]
