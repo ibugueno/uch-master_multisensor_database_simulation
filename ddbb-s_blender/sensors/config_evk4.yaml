@@ -1,4 +1,6 @@
 camera:
   H-FOV: 41.4  # Horizontal Field of View en grados
   V-FOV: 23.6  # Vertical Field of View en grados
-  D-FOV: 47.0  # Diagonal Field of View en grados
+  resolution:
+    width: 1280  # Resolución horizontal en píxeles
+    height: 720  # Resolución vertical en píxeles

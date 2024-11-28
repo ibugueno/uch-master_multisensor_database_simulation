@@ -1,0 +1,6 @@
+camera:
+  H-FOV: 110.0  # Horizontal Field of View en grados
+  V-FOV: 70.0  # Vertical Field of View en grados
+  resolution:
+    width: 640   # Resolución horizontal en píxeles
+    height: 480  # Resolución vertical en píxeles
