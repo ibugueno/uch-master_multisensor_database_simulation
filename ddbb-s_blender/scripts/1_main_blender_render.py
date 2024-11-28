@@ -14,7 +14,7 @@ def parse_arguments():
     parser = argparse.ArgumentParser(description="Renderizado y generación de poses 6D.")
 
     parser.add_argument("--sensor", type=str, choices=["evk4", "davis346", "asus", "zed2"],
-                        required=True, help="Selecciona el sensor a usar (evk4, davis346, rog, zed2).")
+                        required=True, help="Selecciona el sensor a usar (evk4, davis346, asus, zed2).")
 
     parser.add_argument("--scene", type=int, choices=[1, 2, 3], required=True,
                         help="Selecciona la escena a simular: 1 (parabólica), 2 (caída libre), 3 (lanzamiento hacia la cámara).")
@@ -235,7 +235,7 @@ def main():
     sensor_frame_ranges = {
         "evk4": (500, 1000),
         "davis346": (500, 1000),
-        "rog": (500, 1000),  # ejemplo, ajusta según lo que necesites
+        "asus": (500, 1000),  # ejemplo, ajusta según lo que necesites
         "zed2": (0, 1500)  # ejemplo, ajusta según lo que necesites
     }
 
