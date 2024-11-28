@@ -49,3 +49,6 @@ This guide provides instructions on how to create a Conda environment named `ble
 - **Missing dependencies**: If some dependencies fail to install, ensure that `requirements.txt` contains valid package names and versions.
 - **Mixing Conda and Pip**: Be aware that some packages may conflict if they are installed via both Conda and Pip. Always prefer Conda for packages available in Conda repositories.
 
+## Blender version
+
+Blender 4.0.2
