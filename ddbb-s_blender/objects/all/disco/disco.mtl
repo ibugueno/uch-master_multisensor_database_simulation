@@ -1,0 +1,12 @@
+# Blender 4.0.2 MTL File: 'disco.blend'
+# www.blender.org
+
+newmtl poly_0
+Ka 1.000000 1.000000 1.000000
+Ks 0.000000 0.000000 0.000000
+Ke 0.000000 0.000000 0.000000
+Ni 1.450000
+d 1.000000
+illum 1
+map_Kd /Users/ignacio/Proyectos/UCH - Universidad de Chile/Master of Sciences/Tesis/Database/Simulado/Objetos/all/disco/poly_2_gLNKK9MD.jpg
+map_Ns /Users/ignacio/Proyectos/UCH - Universidad de Chile/Master of Sciences/Tesis/Database/Simulado/Objetos/all/disco/poly_3_gLNKK9MD.jpg
