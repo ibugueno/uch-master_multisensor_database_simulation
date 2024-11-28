@@ -108,7 +108,7 @@ def simulate_scene(scene, num_frames, start_x, end_x, max_dimension, height_fact
     imported_obj.rotation_euler[2] += t * 2 * math.pi / 540  # Rotación continua
 
 
-def process_object(object_class, base_path, output_folder, orientations_degrees, num_frames, start_x, end_x, height_factor, sensor_width, sensor_height, lens_mm, scene, luminosities):
+def process_object(object_class, base_path, output_folder, orientations_degrees, num_frames, start_x, end_x, height_factor, sensor_width, sensor_height, lens_mm, scene, luminosities, frame_range):
     """Procesa un objeto y genera imágenes para diferentes orientaciones y niveles de luminosidad."""
     obj_path = os.path.join(base_path, f"{object_class}/{object_class}.obj")
     object_folder_path = os.path.join(output_folder, object_class)
@@ -147,7 +147,8 @@ def process_object(object_class, base_path, output_folder, orientations_degrees,
 
                     bpy.context.view_layer.update()
 
-                    if 500 <= i <= 1000:
+                    # Usar el rango de frames dependiendo del sensor
+                    if frame_range[0] <= i <= frame_range[1]:
                         relative_position = camera_object.matrix_world.inverted_safe() @ imported_obj.matrix_world.translation
                         relative_rotation = camera_object.matrix_world.inverted_safe().to_quaternion() @ imported_obj.matrix_world.to_quaternion()
                         z_distance = abs(relative_position.z)
@@ -175,12 +176,14 @@ def main():
         shutil.rmtree(output_base_folder)
     os.makedirs(output_base_folder)
 
+    # Cargar configuración de la cámara
     camera_config = load_camera_config(sensor_name)
     h_fov = camera_config['camera']['H-FOV']
     v_fov = camera_config['camera']['V-FOV']
     lens_mm = 50
     sensor_width, sensor_height = calculate_sensor_size(h_fov, v_fov, lens_mm)
 
+    # Configurar ajustes de renderizado
     configure_render_settings()
 
     orientations_file = "../objects/orientations_24.txt"
@@ -197,8 +200,20 @@ def main():
     end_x = 1
     height_factor = 1.5
 
+    # Definir los rangos de frames para cada sensor
+    sensor_frame_ranges = {
+        "evk4": (500, 1000),
+        "davis346": (0, 1500),
+        #"rog": (200, 1200),  # ejemplo, ajusta según lo que necesites
+        #"zed2": (100, 1200)  # ejemplo, ajusta según lo que necesites
+    }
+
+    # Obtener el rango de frames según el sensor seleccionado
+    frame_range = sensor_frame_ranges.get(sensor_name, (500, 1000))  # Valor por defecto: (500, 1000)
+
     for object_class in object_classes:
-        process_object(object_class, "../objects/all/", output_base_folder, orientations_degrees, num_frames, start_x, end_x, height_factor, sensor_width, sensor_height, lens_mm, scene, luminosities)
+        process_object(object_class, "../objects/all/", output_base_folder, orientations_degrees, num_frames, start_x, end_x, height_factor, sensor_width, sensor_height, lens_mm, scene, luminosities, frame_range)
+
 
 
 if __name__ == "__main__":

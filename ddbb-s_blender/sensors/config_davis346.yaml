@@ -1,0 +1,3 @@
+camera:
+  H-FOV: 103.6  # Horizontal Field of View en grados
+  V-FOV: 77.4  # Vertical Field of View en grados
