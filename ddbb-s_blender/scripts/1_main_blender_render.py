@@ -174,8 +174,8 @@ def process_object(object_class, base_path, output_folder, orientations_degrees,
                             output_image_path = os.path.join(orientation_folder_path, f'image_{i:04d}.jpg')
                             bpy.context.scene.render.filepath = output_image_path
                             bpy.ops.render.render(write_still=True)
-            break
-        break
+            #break
+        #break
 
 
 def main():
