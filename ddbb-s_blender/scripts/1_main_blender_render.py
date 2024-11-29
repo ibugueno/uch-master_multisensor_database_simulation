@@ -39,27 +39,20 @@ def load_camera_config(sensor_name):
     h_fov = config['camera']['H-FOV']
     v_fov = config['camera']['V-FOV']
     
-    # Retornar la configuración completa
     return h_fov, v_fov, resolution['width'], resolution['height']
 
 
 def calculate_sensor_dimensions(h_fov, v_fov, resolution_width, resolution_height):
     """Calcula las dimensiones del sensor a partir del FOV y la resolución en píxeles."""
-    # Calcular la dimensión del sensor en milímetros usando la fórmula
     sensor_width_mm = (resolution_width * math.tan(math.radians(h_fov) / 2)) / math.tan(math.radians(h_fov) / 2)
     sensor_height_mm = (resolution_height * math.tan(math.radians(v_fov) / 2)) / math.tan(math.radians(v_fov) / 2)
-    
     return sensor_width_mm, sensor_height_mm
 
 
 def calculate_focal_length(sensor_width_mm, sensor_height_mm, h_fov, v_fov):
     """Calcula la longitud focal a partir del FOV y las dimensiones del sensor."""
-    # Calcular la longitud focal basada en el FOV horizontal
     focal_length_h = sensor_width_mm / (2 * math.tan(math.radians(h_fov) / 2))
-    
-    # Calcular la longitud focal basada en el FOV vertical (puedes usar cualquiera de las dos)
     focal_length_v = sensor_height_mm / (2 * math.tan(math.radians(v_fov) / 2))
-    
     return focal_length_h, focal_length_v
 
 
@@ -73,7 +66,7 @@ def configure_render_settings():
 
 
 def setup_camera(sensor_width_mm, sensor_height_mm, h_fov, v_fov, max_dimension, height_factor):
-    """Crea y configura una cámara, calculando la longitud focal según el FOV y el tamaño del sensor."""
+    """Crea y configura una cámara."""
     camera_data = bpy.data.cameras.new(name='Camera')
     camera_object = bpy.data.objects.new('Camera', camera_data)
     bpy.context.scene.collection.objects.link(camera_object)
@@ -81,13 +74,8 @@ def setup_camera(sensor_width_mm, sensor_height_mm, h_fov, v_fov, max_dimension,
     camera_object.rotation_euler = (math.pi / 2, 0, 0)
     bpy.context.scene.camera = camera_object
 
-    # Calcular la longitud focal
     focal_length_h, focal_length_v = calculate_focal_length(sensor_width_mm, sensor_height_mm, h_fov, v_fov)
-    
-    # Usamos la longitud focal horizontal para la cámara (o la vertical, dependiendo de lo que prefieras)
-    camera_data.lens = focal_length_h  # O focal_length_v si prefieres usar la vertical
-
-    # Configuración de las dimensiones físicas del sensor (en mm)
+    camera_data.lens = focal_length_h
     camera_data.sensor_width = sensor_width_mm
     camera_data.sensor_height = sensor_height_mm  
     return camera_object
@@ -103,40 +91,34 @@ def create_light():
     return light_data
 
 
-def simulate_scene(scene, num_frames, start_x, end_x, max_dimension, height_factor, t, imported_obj):
-    """
-    Simula la trayectoria del objeto en función de la escena seleccionada.
-    :param scene: Escena seleccionada (1: parabólica, 2: caída libre, 3: hacia la cámara)
-    :param t: Tiempo normalizado entre 0 y 1 para cada frame
-    :param imported_obj: Objeto importado en la escena
-    """
+def simulate_scene(scene, num_frames, max_dimension, height_factor, t, imported_obj):
+    """Simula la trayectoria del objeto según la escena seleccionada."""
     if scene == 1:
-        # Movimiento parabólico
+        
+        start_x, end_x = -1, 1
         x = start_x + t * (end_x - start_x)
         y = -4 * max_dimension * height_factor * (t - 0.5) ** 2 + max_dimension * height_factor
-        imported_obj.location.x = x
-        imported_obj.location.z = y
-
-    '''
+        imported_obj.location.x, imported_obj.location.y, imported_obj.location.z = x, 0, y
+    
     elif scene == 2:
         # Caída libre
-        x = 0  # Sin movimiento horizontal
-        y = max_dimension * height_factor - 9.8 * (t * num_frames / 30)**2  # Caída acelerada
-        imported_obj.location.x = x
-        imported_obj.location.z = max(0, y)  # Evitar posiciones negativas en Z
+        
+        y = max_dimension * height_factor * 2 - 9.8 * (t * num_frames / 1000)**2  # Caída acelerada
+
+        imported_obj.location.x, imported_obj.location.y, imported_obj.location.z = 0, 0, y
+
 
     elif scene == 3:
-        # Lanzamiento hacia la cámara
-        x = 0  # Movimiento en línea recta hacia la cámara
-        y = max_dimension * height_factor * (1 - t)  # Z decrece hacia la cámara
-        imported_obj.location.y = -t * 5  # Movimiento hacia la cámara
-        imported_obj.location.z = y
-    '''
 
-    imported_obj.rotation_euler[2] += t * 2 * math.pi / 540  # Rotación continua
+        start_x, end_x = 2.6, -0.4
+        x = start_x + t * (end_x - start_x)
+        y = -3 * max_dimension * height_factor * (t - 0.5) ** 2 + max_dimension * height_factor
+        imported_obj.location.x, imported_obj.location.y, imported_obj.location.z = 0, x, y
+    
+    imported_obj.rotation_euler[2] += t * 2 * math.pi / 540
 
 
-def process_object(object_class, base_path, output_folder, orientations_degrees, num_frames, start_x, end_x, height_factor, resolution_width, resolution_height, h_fov, v_fov, lens_mm, scene, luminosities, frame_range):
+def process_object(object_class, base_path, output_folder, orientations_degrees, num_frames, height_factor, resolution_width, resolution_height, h_fov, v_fov, lens_mm, scene, luminosities, frame_range):
     """Procesa un objeto y genera imágenes para diferentes orientaciones y niveles de luminosidad."""
     obj_path = os.path.join(base_path, f"{object_class}/{object_class}.obj")
     object_folder_path = os.path.join(output_folder, object_class)
@@ -149,14 +131,12 @@ def process_object(object_class, base_path, output_folder, orientations_degrees,
     imported_obj = bpy.context.selected_objects[0]
     max_dimension = max(imported_obj.dimensions)
 
-    # Crear y configurar la cámara con el FOV y el tamaño del sensor
     sensor_width_mm, sensor_height_mm = calculate_sensor_dimensions(h_fov, v_fov, resolution_width, resolution_height)
     camera_object = setup_camera(sensor_width_mm, sensor_height_mm, h_fov, v_fov, max_dimension, height_factor)
     light_data = create_light()
 
-    # Configuración de la resolución para la imagen renderizada
-    bpy.context.scene.render.resolution_x = resolution_width  # Resolución en píxeles (ancho)
-    bpy.context.scene.render.resolution_y = resolution_height  # Resolución en píxeles (alto)
+    bpy.context.scene.render.resolution_x = resolution_width
+    bpy.context.scene.render.resolution_y = resolution_height
 
     for luminance in luminosities:
         light_data.energy = luminance
@@ -176,12 +156,10 @@ def process_object(object_class, base_path, output_folder, orientations_degrees,
                 pose_file.write("frame,x,y,z,qx,qy,qz,qw\n")
 
                 for i in range(num_frames):
-                    t = i / (num_frames - 1)  # Tiempo normalizado entre 0 y 1
-                    simulate_scene(scene, num_frames, start_x, end_x, max_dimension, height_factor, t, imported_obj)
-
+                    t = i / (num_frames - 1)
+                    simulate_scene(scene, num_frames, max_dimension, height_factor, t, imported_obj)
                     bpy.context.view_layer.update()
 
-                    # Usar el rango de frames dependiendo del sensor
                     if frame_range[0] <= i <= frame_range[1]:
                         relative_position = camera_object.matrix_world.inverted_safe() @ imported_obj.matrix_world.translation
                         relative_rotation = camera_object.matrix_world.inverted_safe().to_quaternion() @ imported_obj.matrix_world.to_quaternion()
@@ -196,6 +174,8 @@ def process_object(object_class, base_path, output_folder, orientations_degrees,
                             output_image_path = os.path.join(orientation_folder_path, f'image_{i:04d}.jpg')
                             bpy.context.scene.render.filepath = output_image_path
                             bpy.ops.render.render(write_still=True)
+            break
+        break
 
 
 def main():
@@ -210,11 +190,9 @@ def main():
         shutil.rmtree(output_base_folder)
     os.makedirs(output_base_folder)
 
-    # Cargar configuración de la cámara (ahora con resolución)
     h_fov, v_fov, resolution_width, resolution_height = load_camera_config(sensor_name)
     lens_mm = 50
 
-    # Configurar ajustes de renderizado
     configure_render_settings()
 
     orientations_file = "../objects/orientations_24.txt"
@@ -227,23 +205,19 @@ def main():
     ]
 
     num_frames = 1500
-    start_x = -1
-    end_x = 1
     height_factor = 1.5
 
-    # Definir los rangos de frames para cada sensor
     sensor_frame_ranges = {
-        "evk4": (500, 1000),
-        "davis346": (500, 1000),
-        "asus": (500, 1000),  # ejemplo, ajusta según lo que necesites
-        "zed2": (0, 1500)  # ejemplo, ajusta según lo que necesites
+        "evk4": {1: (500, 1000), 2: (100,240), 3: (0, 1150)},
+        "davis346": {1: (500, 1000), 2: (100,300), 3: (0, 1250)},
+        "asus": {1: (500, 1000), 2: (100,260), 3: (0, 1250)},
+        "zed2": {1: (0, 1500), 2: (0,400), 3: (500,1500)}
     }
 
-    # Obtener el rango de frames según el sensor seleccionado
-    frame_range = sensor_frame_ranges.get(sensor_name, (500, 1000))  # Valor por defecto: (500, 1000)
+    frame_range = sensor_frame_ranges.get(sensor_name, {}).get(scene, (500, 1000))
 
     for object_class in object_classes:
-        process_object(object_class, "../objects/all/", output_base_folder, orientations_degrees, num_frames, start_x, end_x, height_factor, resolution_width, resolution_height, h_fov, v_fov, lens_mm, scene, luminosities, frame_range)
+        process_object(object_class, "../objects/all/", output_base_folder, orientations_degrees, num_frames, height_factor, resolution_width, resolution_height, h_fov, v_fov, lens_mm, scene, luminosities, frame_range)
 
 
 if __name__ == "__main__":
