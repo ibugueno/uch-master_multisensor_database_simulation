@@ -30,7 +30,7 @@ def convert_png_to_jpg(directory):
                     # Eliminar el archivo .png original si lo deseas
                     os.remove(png_path)
                     
-                    print(f"Convertido: {png_path} -> {jpg_path}")
+                    #print(f"Convertido: {png_path} -> {jpg_path}")
                 except Exception as e:
                     print(f"Error al convertir {png_path}: {e}")
 
