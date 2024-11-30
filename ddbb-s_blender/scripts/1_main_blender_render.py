@@ -16,8 +16,8 @@ def parse_arguments():
     parser.add_argument("--sensor", type=str, choices=["evk4", "davis346", "asus", "zed2"],
                         required=True, help="Selecciona el sensor a usar (evk4, davis346, asus, zed2).")
 
-    parser.add_argument("--scene", type=int, choices=[1, 2, 3], required=True,
-                        help="Selecciona la escena a simular: 1 (parabólica), 2 (caída libre), 3 (lanzamiento hacia la cámara).")
+    parser.add_argument("--scene", type=int, choices=[0, 1, 2, 3], required=True,
+                        help="Selecciona la escena a simular: 0 (sobre propio eje), 1 (parabólica), 2 (caída libre), 3 (lanzamiento hacia la cámara).")
 
     parser.add_argument("--luminosities", type=int, nargs='+', choices=[1, 3, 9], default=[1, 3, 9],
                         help="Especifica los niveles de luminosidad a simular (por defecto: 1, 3, 9).")
@@ -93,7 +93,13 @@ def create_light():
 
 def simulate_scene(scene, num_frames, max_dimension, height_factor, t, imported_obj):
     """Simula la trayectoria del objeto según la escena seleccionada."""
-    if scene == 1:
+
+    if scene == 0:
+        # Mantener el objeto centrado y girando sobre su propio eje
+        imported_obj.location.x = 0  # Centrado en X
+        imported_obj.location.z = max_dimension * height_factor  # Centrado verticalmente
+
+    elif scene == 1:
         
         start_x, end_x = -1, 1
         x = start_x + t * (end_x - start_x)
@@ -174,8 +180,8 @@ def process_object(object_class, base_path, output_folder, orientations_degrees,
                             output_image_path = os.path.join(orientation_folder_path, f'image_{i:04d}.jpg')
                             bpy.context.scene.render.filepath = output_image_path
                             bpy.ops.render.render(write_still=True)
-            #break
-        #break
+            break
+        break
 
 
 def main():
@@ -198,20 +204,28 @@ def main():
     orientations_file = "../objects/orientations_24.txt"
     orientations_degrees = np.loadtxt(orientations_file, skiprows=1)
 
+    '''
     object_classes = [
         'almohada', 'arbol', 'avion', 'boomerang', 'caja_amarilla', 'caja_azul',
         'carro_rojo', 'clorox', 'dino', 'disco', 'jarron', 'lysoform', 'mobil',
         'paleta', 'pelota', 'sombrero', 'tarro', 'tazon', 'toalla_roja', 'zapatilla'
+    ]
+    '''
+
+    object_classes = [
+        'almohada', 'boomerang', 'caja_amarilla', 'caja_azul',
+        'clorox', 'disco', 'jarron', 'lysoform', 'mobil',
+        'paleta', 'pelota', 'tarro', 'toalla_roja', 'zapatilla'
     ]
 
     num_frames = 1500
     height_factor = 1.5
 
     sensor_frame_ranges = {
-        "evk4": {1: (500, 1000), 2: (100,240), 3: (0, 1150)},
-        "davis346": {1: (500, 1000), 2: (100,300), 3: (0, 1250)},
-        "asus": {1: (500, 1000), 2: (100,260), 3: (0, 1250)},
-        "zed2": {1: (0, 1500), 2: (0,400), 3: (500,1500)}
+        "evk4": {0: (0, 1000), 1: (500, 1000), 2: (100,240), 3: (0, 1150)},
+        "davis346": {0: (0, 1000), 1: (500, 1000), 2: (100,300), 3: (0, 1250)},
+        "asus": {0: (0, 1000), 1: (500, 1000), 2: (100,260), 3: (0, 1250)},
+        "zed2": {0: (0, 1000), 1: (0, 1500), 2: (0,400), 3: (500,1500)}
     }
 
     frame_range = sensor_frame_ranges.get(sensor_name, {}).get(scene, (500, 1000))
