@@ -204,19 +204,20 @@ def main():
     orientations_file = "../objects/orientations_24.txt"
     orientations_degrees = np.loadtxt(orientations_file, skiprows=1)
 
-    '''
+    
     object_classes = [
         'almohada', 'arbol', 'avion', 'boomerang', 'caja_amarilla', 'caja_azul',
         'carro_rojo', 'clorox', 'dino', 'disco', 'jarron', 'lysoform', 'mobil',
         'paleta', 'pelota', 'sombrero', 'tarro', 'tazon', 'toalla_roja', 'zapatilla'
     ]
+    
     '''
-
     object_classes = [
         'almohada', 'boomerang', 'caja_amarilla', 'caja_azul',
         'clorox', 'disco', 'jarron', 'lysoform', 'mobil',
         'paleta', 'pelota', 'tarro', 'toalla_roja', 'zapatilla'
     ]
+    '''
 
     num_frames = 1500
     height_factor = 1.5
