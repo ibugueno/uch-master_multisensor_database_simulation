@@ -96,6 +96,7 @@ def calculate_focal_length(sensor_width_mm, sensor_height_mm, h_fov, v_fov):
     focal_length_v = sensor_height_mm / (2 * math.tan(math.radians(v_fov) / 2))
     return focal_length_h, focal_length_v
 
+
 def render_depth_mask_frame(imported_obj, output_path, binary=False):
     scene = bpy.context.scene
     original_engine = scene.render.engine
@@ -117,6 +118,10 @@ def render_depth_mask_frame(imported_obj, output_path, binary=False):
     imported_obj.color = (1.0, 1.0, 1.0, 1.0)
 
     scene.render.filepath = output_path
+    scene.render.image_settings.file_format = 'JPEG'
+    scene.render.image_settings.color_mode = 'RGB'
+    scene.render.image_settings.quality = 95
+
     bpy.ops.render.render(write_still=True)
 
     for obj in scene.objects:
@@ -125,16 +130,14 @@ def render_depth_mask_frame(imported_obj, output_path, binary=False):
     scene.render.engine = original_engine
 
     if not binary:
-        return  # Solo guardar imagen 3D normal, sin post-procesamiento ni bbox
+        return
 
-    # --- Binarización ---
     img = Image.open(output_path).convert("L")
     img_np = np.array(img)
     mask = (img_np > 10).astype(np.uint8) * 255
     bin_img = Image.fromarray(mask)
     bin_img.save(output_path)
 
-    # --- Bounding Box ---
     y_indices, x_indices = np.where(mask > 0)
 
     if len(x_indices) > 0 and len(y_indices) > 0:
@@ -142,23 +145,24 @@ def render_depth_mask_frame(imported_obj, output_path, binary=False):
         ymin, ymax = y_indices.min(), y_indices.max()
         w, h = img.size
 
-        # Coordenadas normalizadas
         bbox_norm = (
             round(xmin / w, 6), round(ymin / h, 6),
             round(xmax / w, 6), round(ymax / h, 6)
         )
-
-        # Coordenadas absolutas
         bbox_abs = (xmin, ymin, xmax, ymax)
 
-        # Carpetas para salida
-        base_det_path = os.path.join(os.path.dirname(output_path), "..", "det-bbox")
-        norm_path = os.path.join(base_det_path, "normalized")
-        abs_path = os.path.join(base_det_path, "absolute")
+        # Rutas limpias: det-bbox-norm / det-bbox-abs
+        orientation_folder = os.path.basename(os.path.dirname(output_path))           # orientation_...
+        lum_folder = os.path.basename(os.path.dirname(os.path.dirname(output_path)))  # lum1000
+        scene_folder = os.path.basename(os.path.dirname(os.path.dirname(os.path.dirname(output_path))))  # scene_X
+        sensor_output_dir = os.path.abspath(os.path.join(os.path.dirname(output_path), "..", "..", "..", ".."))
+
+        norm_path = os.path.join(sensor_output_dir, "det-bbox-norm", scene_folder, lum_folder, orientation_folder)
+        abs_path = os.path.join(sensor_output_dir, "det-bbox-abs", scene_folder, lum_folder, orientation_folder)
+
         os.makedirs(norm_path, exist_ok=True)
         os.makedirs(abs_path, exist_ok=True)
 
-        # Nombres de archivo
         file_name = os.path.basename(output_path).replace(".jpg", ".txt")
         norm_txt = os.path.join(norm_path, file_name)
         abs_txt = os.path.join(abs_path, file_name)
@@ -170,6 +174,8 @@ def render_depth_mask_frame(imported_obj, output_path, binary=False):
         with open(abs_txt, "w") as f:
             f.write("xmin,ymin,xmax,ymax\n")
             f.write(",".join(map(str, bbox_abs)) + "\n")
+
+
 
 
 def configure_render_settings():
@@ -207,8 +213,8 @@ def create_light(camera_object):
     # Crear luz tipo AREA
     light_data = bpy.data.lights.new(name="AreaLight", type='AREA')
     light_data.shape = 'RECTANGLE'
-    light_data.size = 6.0
-    light_data.size_y = 6.0
+    light_data.size = 8.0 #6
+    light_data.size_y = 8.0 #6
 
     # Crear objeto de luz
     light_object = bpy.data.objects.new(name="AreaLight", object_data=light_data)
@@ -327,13 +333,13 @@ def process_object(object_class, base_path, sensor_output_dir, orientations_degr
             orientation_rad = [math.radians(angle) for angle in orientation_deg]
             imported_obj.rotation_euler = orientation_rad
 
-            base_path = os.path.join(scene_str, lum_str, orientation_str)
+            base_subpath = os.path.join(scene_str, lum_str, orientation_str)
 
-            image_output_path = os.path.join(sensor_output_dir, "images", base_path)
-            depth_mask_output_path = os.path.join(sensor_output_dir, "masks-depth", base_path)
-            seg_mask_output_path = os.path.join(sensor_output_dir, "masks-seg", base_path)
-            pose6d_abs_output_path = os.path.join(sensor_output_dir, "pose6d", base_path, "absolute")
-            pose6d_norm_output_path = os.path.join(sensor_output_dir, "pose6d", base_path, "normalized")
+            image_output_path = os.path.join(sensor_output_dir, "images", base_subpath)
+            depth_mask_output_path = os.path.join(sensor_output_dir, "masks-depth", base_subpath)
+            seg_mask_output_path = os.path.join(sensor_output_dir, "masks-seg", base_subpath)
+            pose6d_abs_output_path = os.path.join(sensor_output_dir, "pose6d-abs", base_subpath)
+            pose6d_norm_output_path = os.path.join(sensor_output_dir, "pose6d-norm", base_subpath)
 
             os.makedirs(image_output_path, exist_ok=True)
 
@@ -362,15 +368,26 @@ def process_object(object_class, base_path, sensor_output_dir, orientations_degr
                         if 0 <= x_px < resolution_width and 0 <= y_px < resolution_height:
                             x_norm = round(x_px / resolution_width, 6)
                             y_norm = round(y_px / resolution_height, 6)
+                            z_cm = round(z_m * 100, 6)
+
+                            qw, qx, qy, qz = (
+                                round(rel_rot.w, 6),
+                                round(rel_rot.x, 6),
+                                round(rel_rot.y, 6),
+                                round(rel_rot.z, 6),
+                            )
 
                             if save_labels:
                                 abs_file = os.path.join(pose6d_abs_output_path, f"image_{i:04d}.txt")
                                 norm_file = os.path.join(pose6d_norm_output_path, f"image_{i:04d}.txt")
 
                                 with open(abs_file, "w") as pf:
-                                    pf.write(f"{x_px},{y_px}\n")
+                                    pf.write("x_px,y_px,z_cm,qw,qx,qy,qz\n")
+                                    pf.write(f"{x_px},{y_px},{z_cm},{qw},{qx},{qy},{qz}\n")
+
                                 with open(norm_file, "w") as pf:
-                                    pf.write(f"{x_norm},{y_norm}\n")
+                                    pf.write("x_norm,y_norm,z_cm,qw,qx,qy,qz\n")
+                                    pf.write(f"{x_norm},{y_norm},{z_cm},{qw},{qx},{qy},{qz}\n")
 
                                 output_depth = os.path.join(depth_mask_output_path, f"image_{i:04d}.jpg")
                                 output_seg = os.path.join(seg_mask_output_path, f"image_{i:04d}.jpg")
@@ -384,7 +401,6 @@ def process_object(object_class, base_path, sensor_output_dir, orientations_degr
                             bpy.context.scene.render.image_settings.quality = 95
                             bpy.context.scene.render.image_settings.color_mode = 'RGB'
                             bpy.ops.render.render(write_still=True)
-
 
 
             #break
@@ -496,7 +512,7 @@ def main():
     '''
 
     sensor_frame_ranges = {
-        "evk4":     {0: (0,0), 1: (0,0), 2: (0,0), 3: (0,0)},
+        "evk4":     {0: (0,0), 1: (0,0), 2: (0,0), 3: (900,900)},
         "davis346": {0: (0,0), 1: (0,0), 2: (0,0), 3: (0,0)},
         "asus":     {0: (0,0), 1: (0,0), 2: (0,0), 3: (0,0)}, 
     }
