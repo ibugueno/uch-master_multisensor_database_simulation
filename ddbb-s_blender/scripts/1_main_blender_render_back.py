@@ -152,13 +152,15 @@ def render_depth_mask_frame(imported_obj, output_path, binary=False):
         bbox_abs = (xmin, ymin, xmax, ymax)
 
         # Rutas limpias: det-bbox-norm / det-bbox-abs
-        orientation_folder = os.path.basename(os.path.dirname(output_path))           # orientation_...
-        lum_folder = os.path.basename(os.path.dirname(os.path.dirname(output_path)))  # lum1000
-        scene_folder = os.path.basename(os.path.dirname(os.path.dirname(os.path.dirname(output_path))))  # scene_X
-        sensor_output_dir = os.path.abspath(os.path.join(os.path.dirname(output_path), "..", "..", "..", ".."))
+        orientation_folder = os.path.basename(os.path.dirname(output_path))  # orientation_...
+        object_folder = os.path.basename(os.path.dirname(os.path.dirname(output_path)))  # e.g., jarron
+        lum_folder = os.path.basename(os.path.dirname(os.path.dirname(os.path.dirname(output_path))))  # lum1000
+        scene_folder = os.path.basename(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(output_path)))))  # scene_X
+        sensor_output_dir = os.path.abspath(os.path.join(os.path.dirname(output_path), "..", "..", "..", "..", ".."))
 
-        norm_path = os.path.join(sensor_output_dir, "det-bbox-norm", scene_folder, lum_folder, orientation_folder)
-        abs_path = os.path.join(sensor_output_dir, "det-bbox-abs", scene_folder, lum_folder, orientation_folder)
+        norm_path = os.path.join(sensor_output_dir, "det-bbox-norm", scene_folder, lum_folder, object_folder, orientation_folder)
+        abs_path = os.path.join(sensor_output_dir, "det-bbox-abs", scene_folder, lum_folder, object_folder, orientation_folder)
+
 
         os.makedirs(norm_path, exist_ok=True)
         os.makedirs(abs_path, exist_ok=True)
@@ -237,11 +239,11 @@ def create_light(camera_object):
 def simulate_scene(scene, num_frames, max_dimension, height_factor, t, imported_obj):
     """Simula la trayectoria del objeto según la escena seleccionada."""
 
-    # Define una rotación uniforme por frame (2 vueltas en total)
-    total_rotations = 3  # vueltas completas
-    rotation_per_frame = total_rotations * 2 * math.pi / num_frames
-
     if scene == 0: # Mantener el objeto centrado y girando sobre su propio eje
+
+        # Define una rotación uniforme por frame
+        total_rotations = 2  # vueltas completas
+        rotation_per_frame = total_rotations * 2 * math.pi / num_frames
         
         imported_obj.location.x = 0  # Centrado en X
         imported_obj.location.z = max_dimension * height_factor  # Centrado verticalmente
@@ -260,6 +262,10 @@ def simulate_scene(scene, num_frames, max_dimension, height_factor, t, imported_
 
     elif scene == 2: # Caida libre
         
+        # Define una rotación uniforme por frame
+        total_rotations = 3  # vueltas completas
+        rotation_per_frame = total_rotations * 2 * math.pi / num_frames
+
         y = max_dimension * height_factor * 2 - 9.8 * (t * num_frames / 1000)**2  # Caída acelerada
         imported_obj.location.x, imported_obj.location.y, imported_obj.location.z = 0, 0, y
 
@@ -333,7 +339,8 @@ def process_object(object_class, base_path, sensor_output_dir, orientations_degr
             orientation_rad = [math.radians(angle) for angle in orientation_deg]
             imported_obj.rotation_euler = orientation_rad
 
-            base_subpath = os.path.join(scene_str, lum_str, orientation_str)
+            #base_subpath = os.path.join(scene_str, lum_str, orientation_str)
+            base_subpath = os.path.join(scene_str, lum_str, object_class, orientation_str)
 
             image_output_path = os.path.join(sensor_output_dir, "images", base_subpath)
             depth_mask_output_path = os.path.join(sensor_output_dir, "masks-depth", base_subpath)
@@ -518,10 +525,10 @@ def main():
 
     #'''
     sensor_frame_ranges = {
-        "evk4":     {0: (0, 1500), 1: (0, 1500), 2: (0, 1500), 3: (900, 1500)},
-        "davis346": {0: (0, 1500), 1: (0, 1500), 2: (0, 1500), 3: (900, 1500)},
-        "asus":     {0: (0, 1500), 1: (0, 1500), 2: (0, 1500), 3: (900, 1500)},
-        "zed2":     {0: (0, 1500), 1: (0, 1500), 2: (0, 1500), 3: (900, 1500)}
+        "evk4":     {0: (0, 750), 1: (0, 1500), 2: (0, 1500), 3: (900, 1500)},
+        "davis346": {0: (0, 750), 1: (0, 1500), 2: (0, 1500), 3: (900, 1500)},
+        "asus":     {0: (0, 750), 1: (0, 1500), 2: (0, 1500), 3: (900, 1500)},
+        "zed2":     {0: (0, 750), 1: (0, 1500), 2: (0, 1500), 3: (900, 1500)}
     }
     
     '''
