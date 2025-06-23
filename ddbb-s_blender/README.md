@@ -25,6 +25,18 @@ This guide provides instructions on how to create a Conda environment named `ble
 
 ---
 
+## Execution
+
+1. **Move to scripts folder**
+
+2. Execute
+
+python 1_main_blender_render_back.py --sensor asus --scene all --luminosities 1000 --background --save_labels
+python 1_main_blender_render_back.py --sensor davis346 --scene all --luminosities 1000 --background --save_labels
+python 1_main_blender_render_back.py --sensor evk4 --scene all --luminosities 1000 --background --save_labels
+
+---
+
 ## Additional Notes
 
 - **Verify the Python version**  

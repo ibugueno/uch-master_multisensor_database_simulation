@@ -1,0 +1,26 @@
+image_width: 346
+image_height: 260
+camera_name: DAVIS-00000064
+camera_matrix:
+  rows: 3
+  cols: 3
+  data: [292.92782,   0.     , 183.33877,
+           0.     , 293.92136, 127.45888,
+           0.     ,   0.     ,   1.     ]
+distortion_model: plumb_bob
+distortion_coefficients:
+  rows: 1
+  cols: 5
+  data: [-0.325726, 0.116515, -0.001777, 0.001173, 0.000000]
+rectification_matrix:
+  rows: 3
+  cols: 3
+  data: [1., 0., 0.,
+         0., 1., 0.,
+         0., 0., 1.]
+projection_matrix:
+  rows: 3
+  cols: 4
+  data: [255.22466,   0.     , 186.43134,   0.     ,
+           0.     , 272.82437, 126.17797,   0.     ,
+           0.     ,   0.     ,   1.     ,   0.     ]

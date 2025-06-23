@@ -1,0 +1,11 @@
+bbox:
+  x_min: 246
+  x_max: 291
+  y_min: 78
+  y_max: 174
+
+object:
+  height_cm: 28.0
+  width_cm: 15.0
+
+distance_to_object_cm: 90.0

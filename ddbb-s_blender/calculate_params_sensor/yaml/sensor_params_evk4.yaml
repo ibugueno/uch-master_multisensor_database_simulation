@@ -1,0 +1,27 @@
+image_width: 1280
+image_height: 720
+camera_name: EVK4_calibrated
+camera_matrix:
+  rows: 3
+  cols: 3
+  data: [1985.3336116957746, 0.0, 645.3172674531485,
+         0.0, 1985.3336116957746, 363.2634686340761,
+         0.0, 0.0, 1.0]
+distortion_model: plumb_bob
+distortion_coefficients:
+  rows: 1
+  cols: 5
+  data: [-0.16483351418085396, 1.5238501374039639, 
+         -2.1178152728557509e-05, -0.00037074232498489427, 0.0]
+rectification_matrix:
+  rows: 3
+  cols: 3
+  data: [1.0, 0.0, 0.0,
+         0.0, 1.0, 0.0,
+         0.0, 0.0, 1.0]
+projection_matrix:
+  rows: 3
+  cols: 4
+  data: [1985.3336116957746, 0.0, 645.3172674531485, 0.0,
+         0.0, 1985.3336116957746, 363.2634686340761, 0.0,
+         0.0, 0.0, 1.0, 0.0]

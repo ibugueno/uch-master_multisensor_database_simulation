@@ -29,43 +29,17 @@ def parse_arguments():
 
 
 def load_camera_config(sensor_name):
-    """Carga todos los parámetros necesarios desde YAML."""
+    """Carga la configuración de la cámara según el sensor seleccionado."""
     yaml_file = f"../sensors/config_{sensor_name}.yaml"
     with open(yaml_file, "r") as file:
         config = yaml.safe_load(file)
-
-    camera = config['camera']
-    h_fov = camera['H-FOV']
-    v_fov = camera['V-FOV']
-    resolution_width = camera['resolution']['width']
-    resolution_height = camera['resolution']['height']
-    sensor_width_mm = camera['sensor_width_mm']
-    sensor_height_mm = camera['sensor_height_mm']
-    focal_length_mm_x = camera['focal_length_mm_x']
-    focal_length_mm_y = camera['focal_length_mm_y']
-    focal_length_px = camera['focal_length_px']  # en x
-    focal_length_py = camera['focal_length_py']  # en y
-
-    # Inferir tamaño de píxel promedio (mm por pixel)
-    pixel_size_mm_x = sensor_width_mm / resolution_width
-    pixel_size_mm_y = sensor_height_mm / resolution_height
-
-    return {
-        'h_fov': h_fov,
-        'v_fov': v_fov,
-        'resolution_width': resolution_width,
-        'resolution_height': resolution_height,
-        'sensor_width_mm': sensor_width_mm,
-        'sensor_height_mm': sensor_height_mm,
-        'focal_length_mm_x': focal_length_mm_x,
-        'focal_length_mm_y': focal_length_mm_y,
-        'focal_length_px': focal_length_px,
-        'focal_length_py': focal_length_py,
-        'pixel_size_mm_x': pixel_size_mm_x,
-        'pixel_size_mm_y': pixel_size_mm_y
-    }
-
-
+        
+    # Extraer la resolución y FOV desde el archivo YAML
+    resolution = config['camera']['resolution']
+    h_fov = config['camera']['H-FOV']
+    v_fov = config['camera']['V-FOV']
+    
+    return h_fov, v_fov, resolution['width'], resolution['height']
 
 
 def calculate_sensor_dimensions(h_fov, v_fov, resolution_width, resolution_height):
@@ -150,7 +124,7 @@ def simulate_scene(scene, num_frames, max_dimension, height_factor, t, imported_
     imported_obj.rotation_euler[2] += t * 2 * math.pi / 540
 
 
-def process_object(object_class, base_path, output_folder, orientations_degrees, num_frames, height_factor, resolution_width, resolution_height, h_fov, v_fov, lens_mm, sensor_width_mm, sensor_height_mm, lens_px, scene, luminosities, frame_range):
+def process_object(object_class, base_path, output_folder, orientations_degrees, num_frames, height_factor, resolution_width, resolution_height, h_fov, v_fov, lens_mm, scene, luminosities, frame_range):
     """Procesa un objeto y genera imágenes para diferentes orientaciones y niveles de luminosidad."""
     obj_path = os.path.join(base_path, f"{object_class}/{object_class}.obj")
     object_folder_path = os.path.join(output_folder, object_class)
@@ -163,8 +137,7 @@ def process_object(object_class, base_path, output_folder, orientations_degrees,
     imported_obj = bpy.context.selected_objects[0]
     max_dimension = max(imported_obj.dimensions)
 
-    #sensor_width_mm, sensor_height_mm = calculate_sensor_dimensions(h_fov, v_fov, resolution_width, resolution_height)
-    
+    sensor_width_mm, sensor_height_mm = calculate_sensor_dimensions(h_fov, v_fov, resolution_width, resolution_height)
     camera_object = setup_camera(sensor_width_mm, sensor_height_mm, h_fov, v_fov, max_dimension, height_factor)
     light_data = create_light()
 
@@ -199,15 +172,16 @@ def process_object(object_class, base_path, output_folder, orientations_degrees,
                         z_distance = abs(relative_position.z)
 
                         if z_distance > 0:
-
-                            x_pixel = int((relative_position.x / z_distance) * lens_px + bpy.context.scene.render.resolution_x / 2)
-                            y_pixel = int(-(relative_position.y / z_distance) * lens_px + bpy.context.scene.render.resolution_y / 2)
+                            x_pixel = int((relative_position.x / z_distance) * (lens_mm / resolution_width) * bpy.context.scene.render.resolution_x + bpy.context.scene.render.resolution_x / 2)
+                            y_pixel = int(-(relative_position.y / z_distance) * (lens_mm / resolution_height) * bpy.context.scene.render.resolution_y + bpy.context.scene.render.resolution_y / 2)
 
                             pose_file.write(f"{i},{x_pixel},{y_pixel},{z_distance},{relative_rotation.x},{relative_rotation.y},{relative_rotation.z},{relative_rotation.w}\n")
 
                             output_image_path = os.path.join(orientation_folder_path, f'image_{i:04d}.jpg')
                             bpy.context.scene.render.filepath = output_image_path
                             bpy.ops.render.render(write_still=True)
+
+                            print(f'output_image_path: {output_image_path}')
             #break
         #break
 
@@ -224,43 +198,28 @@ def main():
         shutil.rmtree(output_base_folder)
     os.makedirs(output_base_folder)
 
-
-    cam_config = load_camera_config(sensor_name)
-
-    h_fov = cam_config['h_fov']
-    v_fov = cam_config['v_fov']
-    resolution_width = cam_config['resolution_width']
-    resolution_height = cam_config['resolution_height']
-    sensor_width_mm = cam_config['sensor_width_mm']
-    sensor_height_mm = cam_config['sensor_height_mm']
-    focal_length_mm_x = cam_config['focal_length_mm_x']
-    focal_length_mm_y = cam_config['focal_length_mm_y']
-    focal_length_px = cam_config['focal_length_px']
-    focal_length_py = cam_config['focal_length_py']
-    pixel_size_mm_x = cam_config['pixel_size_mm_x']
-    pixel_size_mm_y = cam_config['pixel_size_mm_y']
-
+    h_fov, v_fov, resolution_width, resolution_height = load_camera_config(sensor_name)
+    lens_mm = 50
 
     configure_render_settings()
 
-    orientations_file = "../objects/orientations_24.txt"
+    orientations_file = "../objects/orientation_0.txt"
     orientations_degrees = np.loadtxt(orientations_file, skiprows=1)
 
-    '''
-    object_classes = [
-        'almohada', 'arbol', 'avion', 'boomerang', 'caja_amarilla', 'caja_azul',
-        'carro_rojo', 'clorox', 'dino', 'disco', 'jarron', 'lysoform', 'mobil',
-        'paleta', 'pelota', 'sombrero', 'tarro', 'tazon', 'toalla_roja', 'zapatilla'
-    ]
-    '''
-    
-    object_classes = [
-        'almohada', 'arbol', 'avion', 'boomerang', 'caja_amarilla', 'caja_azul',
-        'carro_rojo', 'clorox', 'dino', 'jarron', 'lysoform', 'mobil',
-        'paleta', 'pelota', 'sombrero', 'zapatilla'
-    ]
+    # Asegúrate de que orientations_degrees sea un array bidimensional
+    if orientations_degrees.ndim == 1:  # Caso de una sola orientación
+        orientations_degrees = np.expand_dims(orientations_degrees, axis=0)
 
-    object_classes = ['jarron']
+    
+    '''
+    object_classes = [
+        'almohada', 'avion', 'caja_amarilla', 'carro_rojo', 'dino', 'jarron', 'pelota', 'sombrero', 'toalla_roja', 'zapatilla'
+    ]
+    '''
+
+    object_classes = [
+        'carro_rojo', 'dino', 'zapatilla'
+    ]
 
     num_frames = 1500
     height_factor = 1.5
@@ -275,20 +234,13 @@ def main():
     '''
 
     sensor_frame_ranges = {
-        "evk4": {0: (0,0)},
-        "davis346": {0: (0,0)},
-        "asus": {0: (0,0)},
+        "asus": {0: (0, num_frames), 1: (0, num_frames), 2: (0, num_frames), 3: (0, num_frames)}
     }
 
     frame_range = sensor_frame_ranges.get(sensor_name, {}).get(scene, (500, 1000))
 
     for object_class in object_classes:
-
-        process_object(object_class, "../objects/all/", output_base_folder, orientations_degrees, num_frames, height_factor,
-                       resolution_width, resolution_height, h_fov, v_fov,
-                       focal_length_mm_x, sensor_width_mm, sensor_height_mm, focal_length_px,
-                       scene, luminosities, frame_range)
-
+        process_object(object_class, "../objects/all/", output_base_folder, orientations_degrees, num_frames, height_factor, resolution_width, resolution_height, h_fov, v_fov, lens_mm, scene, luminosities, frame_range)
 
 
 if __name__ == "__main__":

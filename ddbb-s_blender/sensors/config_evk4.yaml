@@ -1,6 +1,12 @@
 camera:
-  H-FOV: 41.4  # Horizontal Field of View en grados
-  V-FOV: 23.6  # Vertical Field of View en grados
+  H-FOV: 41.58
+  V-FOV: 24.11
+  focal_length_mm_x: 8.1928
+  focal_length_mm_y: 8.1928
+  focal_length_px: 1985.33
+  focal_length_py: 1985.33
   resolution:
-    width: 1280  # Resolución horizontal en píxeles
-    height: 720  # Resolución vertical en píxeles
+    height: 720
+    width: 1280
+  sensor_height_mm: 3.5
+  sensor_width_mm: 6.22
