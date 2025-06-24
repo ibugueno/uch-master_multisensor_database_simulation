@@ -517,10 +517,6 @@ def main():
         'paleta', 'pelota', 'tarro', 'sombrero', 'zapatilla'
     ]
 
-    object_classes = [
-        'tarro', 'sombrero', 'zapatilla'
-    ]
-
 
     num_frames = 1500
     height_factor = 1.5
