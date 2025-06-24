@@ -517,7 +517,9 @@ def main():
         'paleta', 'pelota', 'tarro', 'sombrero', 'zapatilla'
     ]
 
-    #object_classes = ['jarron']
+    object_classes = [
+        'tarro', 'sombrero', 'zapatilla'
+    ]
 
 
     num_frames = 1500
