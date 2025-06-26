@@ -1,5 +1,5 @@
 # Usar imagen base con soporte CUDA y Ubuntu 20.04
-FROM nvidia/cuda:11.3.1-base-ubuntu20.04
+FROM pytorch/pytorch:2.3.0-cuda12.1-cudnn8-runtime
 
 # Evitar preguntas interactivas durante la instalación
 ENV DEBIAN_FRONTEND=noninteractive
