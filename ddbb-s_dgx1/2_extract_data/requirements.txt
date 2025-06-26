@@ -1,0 +1,4 @@
+numpy
+dv
+argparse
+opencv-pythonscsc

@@ -35,7 +35,7 @@ nbconvert>=5.6.1
 nbformat>=5.0.6
 notebook>=6.0.3
 numba>=0.49.1
-numpy>=1.24
+numpy==1.24
 olefile>=0.46
 opencv-python
 pandas>=1.0.3
@@ -61,7 +61,8 @@ six>=1.14.0
 screeninfo
 terminado>=0.8.3
 testpath>=0.4.4
-#torch>=1.5.0 # see https://pytorch.org/get-started/locally/ to generated correct pip install command for torch and torchvision, assuming cuda already installed.pip
+torch>=1.5.0 # see https://pytorch.org/get-started/locally/ to generated correct pip install command for torch and torchvision, assuming cuda already installed.pip
+torch-vision
 tornado>=6.0.4
 tqdm>=4.46.0
 traitlets>=4.3.3
