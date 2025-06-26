@@ -25,14 +25,6 @@ RUN apt-get update && apt-get install -y \
     htop \
     && rm -rf /var/lib/apt/lists/*
 
-# Instalar Miniconda
-RUN wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O /tmp/miniconda.sh && \
-    bash /tmp/miniconda.sh -b -p /opt/conda && \
-    rm /tmp/miniconda.sh
-
-# Configurar Conda en el PATH
-ENV PATH=/opt/conda/bin:$PATH
-
 # Crear carpetas necesarias para el proyecto
 WORKDIR /app
 RUN mkdir -p /app/input /app/output /app/tmp
