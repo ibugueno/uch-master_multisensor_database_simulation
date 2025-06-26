@@ -1,5 +1,5 @@
-*output*
-*input*
+output/*
+input/*
 *__pycache__*
-*tmp*
-*data*
+tmp/*
+data/*

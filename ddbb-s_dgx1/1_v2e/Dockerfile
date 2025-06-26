@@ -21,6 +21,8 @@ RUN apt-get update && apt-get install -y \
     libjpeg62 \
     ffmpeg \
     vim \
+    tmux \
+    htop \
     && rm -rf /var/lib/apt/lists/*
 
 # Instalar Miniconda

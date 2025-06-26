@@ -35,23 +35,19 @@ generar_comandos_v2e() {
     local height=$3
     local sensor=$4
     local gpu_id=$5
-    local cmds=""
     local total=0
 
     while IFS= read -r line; do
-        if [[ "$line" != *"$SCENE_FILTER"* ]]; then
-            continue
-        fi
-
-        output_folder="output/aedat_all_with_back_without_blur/$MODEL_FILTER/$line"
-        input_folder="input/frames_all_with_back_without_blur/3_ddbs-s_with_back_without_blur/$line"
+        relative_path=$(echo "$line" | grep -oP 'scene_0/.*')
+        output_folder="output/$sensor/events_${MODEL_FILTER}/$relative_path"
+        input_folder="input/$line"
 
         if $DRY_RUN; then
             echo "[${sensor^^}] Input:  $input_folder"
             echo "[${sensor^^}] Output: $output_folder"
         fi
 
-        cmd="python v2e.py -i \"$input_folder\" \
+        echo "python v2e.py -i \"$input_folder\" \
             --overwrite \
             --input_frame_rate=1000 \
             --auto_timestamp_resolution=True \
@@ -69,38 +65,39 @@ generar_comandos_v2e() {
             --dvs_params \"$MODEL_FILTER\" \
             --use_cuda True \
             --gpu_id $gpu_id"
-
-        cmds+="$cmd"$'\n'
         ((total++))
     done < "$input_file"
 
     if $DRY_RUN; then
         echo "[${sensor^^}] Total comandos generados: $total"
     fi
-
-    echo "$cmds"
 }
 
-# === Generar comandos por sensor ===
-CMDS_DAVIS=$(generar_comandos_v2e "$INPUT_FILE_DAVIS" 346 260 "davis346" "$SCENE_INDEX")
-CMDS_EVK4=$(generar_comandos_v2e "$INPUT_FILE_EVK4" 1280 720 "evk4" "$((SCENE_INDEX + 1))")
+# === Generar y guardar comandos ===
+TMP_SCRIPT_DAVIS="/tmp/cmds_davis_${SCENE_FILTER}_${MODEL_FILTER}.sh"
+TMP_SCRIPT_EVK4="/tmp/cmds_evk4_${SCENE_FILTER}_${MODEL_FILTER}.sh"
 
-# === Modo dry-run termina aquí ===
 if $DRY_RUN; then
+    generar_comandos_v2e "$INPUT_FILE_DAVIS" 346 260 "davis346" "$SCENE_INDEX"
+    generar_comandos_v2e "$INPUT_FILE_EVK4" 1280 720 "evk4" "$((SCENE_INDEX + 1))"
     echo "[INFO] Fin de simulación (dry-run). No se ejecutó ningún tmux ni procesamiento."
     exit 0
+else
+    generar_comandos_v2e "$INPUT_FILE_DAVIS" 346 260 "davis346" "$SCENE_INDEX" > "$TMP_SCRIPT_DAVIS"
+    generar_comandos_v2e "$INPUT_FILE_EVK4" 1280 720 "evk4" "$((SCENE_INDEX + 1))" > "$TMP_SCRIPT_EVK4"
+    chmod +x "$TMP_SCRIPT_DAVIS" "$TMP_SCRIPT_EVK4"
 fi
 
 # === Lanzar sesiones tmux ===
 tmux new-session -d -s "v2e_davis346_${SCENE_FILTER}_${MODEL_FILTER}" bash -c "
 source /opt/conda/etc/profile.d/conda.sh && conda activate $CONDA_ENV
-$CMDS_DAVIS
+bash \"$TMP_SCRIPT_DAVIS\"
 exec bash
 "
 
 tmux new-session -d -s "v2e_evk4_${SCENE_FILTER}_${MODEL_FILTER}" bash -c "
 source /opt/conda/etc/profile.d/conda.sh && conda activate $CONDA_ENV
-$CMDS_EVK4
+bash \"$TMP_SCRIPT_EVK4\"
 exec bash
 "
 
