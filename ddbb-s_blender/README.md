@@ -35,6 +35,13 @@ python 1_main_blender_render_back.py --sensor asus --scene all --luminosities 10
 python 1_main_blender_render_back.py --sensor davis346 --scene all --luminosities 1000 --background --save_labels
 python 1_main_blender_render_back.py --sensor evk4 --scene all --luminosities 1000 --background --save_labels
 
+3. Compress
+
+tar -czvf ddbb-s-davis346-scn0.tar.gz .
+tar -czvf ddbb-s-asus-scn0.tar.gz .
+tar -czvf ddbb-s-evk4-scn0.tar.gz .
+
+
 ---
 
 ## Additional Notes
