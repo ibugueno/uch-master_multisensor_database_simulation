@@ -42,12 +42,16 @@ class SegmentationDataset(Dataset):
     def __getitem__(self, idx):
         img = Image.open(self.image_paths[idx]).convert("RGB")
         mask = Image.open(self.mask_paths[idx]).convert("L")
+        mask = transforms.ToTensor()(mask)
+        mask = (mask > 0.5).float()  # solo umbraliza una vez aquí
+
         if self.transform:
             img = self.transform(img)
         else:
             img = transforms.ToTensor()(img)
-        mask = transforms.ToTensor()(mask) > 0
-        return img, mask.float(), self.image_paths[idx]
+
+        return img, mask, self.image_paths[idx]
+
 
 def get_transform(sensor):
     h, w = SENSOR_SHAPES[sensor]
@@ -131,7 +135,7 @@ def save_example_outputs(preds, targets, paths, out_path):
     out_dir.mkdir(exist_ok=True)
 
     # 🔍 DEBUG: verificar todos los paths que contienen orientation_88_-6_-34
-    print("\n[DEBUG] Checking all paths with orientation_88_-6_-34 (grouped by object and sorted by filename)")
+    #print("\n[DEBUG] Checking all paths with orientation_88_-6_-34 (grouped by object and sorted by filename)")
     orientation_objects = defaultdict(list)
     for i, path in enumerate(paths):
         if "orientation_88_-6_-34" in str(path):
@@ -141,8 +145,8 @@ def save_example_outputs(preds, targets, paths, out_path):
     for obj in sorted(orientation_objects.keys()):
         sorted_entries = sorted(orientation_objects[obj], key=lambda x: os.path.basename(str(x[1])))
         for i, path in sorted_entries:
-            print(f"[DEBUG] i={i}, obj={obj}, path={path}")
-    print("[DEBUG] Finished listing paths\n")
+            #print(f"[DEBUG] i={i}, obj={obj}, path={path}")
+    #print("[DEBUG] Finished listing paths\n")
 
     orientation_objects = defaultdict(list)
     for i, path in enumerate(paths):
