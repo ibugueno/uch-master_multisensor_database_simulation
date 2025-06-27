@@ -307,10 +307,12 @@ def train_eval(model, train_loader, val_loader, device, args):
 
         # COCO Evaluation
         coco_gt_dict = {
+            "info": {"description": "Faster R-CNN evaluation"},
             "images": coco_images,
             "annotations": coco_gt,
             "categories": [{"id": v, "name": k} for k, v in CLASS_MAPPING.items()]
         }
+
 
         with open(out_path / "coco_gt.json", 'w') as f:
             json.dump(coco_gt_dict, f)
