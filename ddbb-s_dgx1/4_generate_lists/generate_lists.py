@@ -70,19 +70,19 @@ def process_sensor(sensor: str, base_root: str, output_dir: str, input_subpath: 
 def generate_txt_files(base_root: str, output_dir: str):
     config = {
         "davis346": {
-            "input_subpath": "events-frames/davis346",
+            "input_subpath": "events-frames2/davis346",
             "replace_map": {
-                "mask-seg": {"events-frames": "frames", "events_noisy": "masks-seg"},
-                "det-bbox-abs": {"events-frames": "frames", "events_noisy": "det-bbox-abs"},
-                "pose6d-abs": {"events-frames": "frames", "events_noisy": "pose6d-abs"},
+                "mask-seg": {"events-frames2": "frames", "events_noisy": "masks-seg"},
+                "det-bbox-abs": {"events-frames2": "frames", "events_noisy": "det-bbox-abs"},
+                "pose6d-abs": {"events-frames2": "frames", "events_noisy": "pose6d-abs"},
             }
         },
         "evk4": {
-            "input_subpath": "events-frames/evk4",
+            "input_subpath": "events-frames2/evk4",
             "replace_map": {
-                "mask-seg": {"events-frames": "frames", "events_noisy": "masks-seg"},
-                "det-bbox-abs": {"events-frames": "frames", "events_noisy": "det-bbox-abs"},
-                "pose6d-abs": {"events-frames": "frames", "events_noisy": "pose6d-abs"},
+                "mask-seg": {"events-frames2": "frames", "events_noisy": "masks-seg"},
+                "det-bbox-abs": {"events-frames2": "frames", "events_noisy": "det-bbox-abs"},
+                "pose6d-abs": {"events-frames2": "frames", "events_noisy": "pose6d-abs"},
             }
         },
         "asus": {
