@@ -76,15 +76,15 @@ def main():
                         print(f"[INFO] Processing orientation folder: {orientation_dir}")
                         process_orientation_folder(orientation_dir, output_orientation_path)
 
-                        break
-                    break
-                break
-            break
+                        #break
+                    #break
+                #break
+            #break
 
 if __name__ == "__main__":
 
     # Configurable flag
-    WRITE_FILES = False
+    WRITE_FILES = True
 
     BASE_PATH = Path("/app/input/frames")
     OUTPUT_DIRNAME = "det-bbox-abs-10ms"
