@@ -31,7 +31,7 @@ EXAMPLE_OBJECT_PATH = "orientation_88_-6_-34"
 SENSOR_SHAPES = {
     "asus": (360, 640),
     "davis346": (260, 346),
-    "evk4": (720, 1080)
+    "evk4": (720, 1280)
 }
 
 class SegmentationDataset(Dataset):
