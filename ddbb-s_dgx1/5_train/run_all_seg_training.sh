@@ -11,12 +11,15 @@ for sensor in "${!sensors[@]}"; do
     gpu="${sensors[$sensor]}"
     session="training_seg_${sensor}"
 
-    tmux new-session -d -s $session \
-    "python $SCRIPT_PATH \
-        --sensor $sensor \
-        --input_dir $INPUT_DIR \
-        --output_dir $OUTPUT_DIR \
-        --gpu $gpu"
+    tmux new-session -d -s $session "
+        python $SCRIPT_PATH \
+            --sensor $sensor \
+            --input_dir $INPUT_DIR \
+            --output_dir $OUTPUT_DIR \
+            --gpu $gpu ; \
+        echo '[INFO] Training for $sensor finished. Press Enter to close.' ; \
+        read
+    "
     
     echo "[INFO] Started tmux session '$session' on GPU $gpu"
 done
