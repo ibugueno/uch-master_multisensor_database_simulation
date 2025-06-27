@@ -103,8 +103,12 @@ class FasterRCNNDataset(Dataset):
         boxes = torch.as_tensor(bboxes, dtype=torch.float32)
 
         # === Clase desde carpeta padre ===
-        obj_class = os.path.basename(os.path.dirname(img_path))
-        label = CLASS_MAPPING.get(obj_class, 0)
+        #obj_class = os.path.basename(os.path.dirname(img_path))
+        obj_class = os.path.basename(os.path.dirname(os.path.dirname(img_path)))
+
+        if obj_class not in CLASS_MAPPING:
+            raise ValueError(f"[ERROR] Object class '{obj_class}' not found in CLASS_MAPPING. Path: {img_path}")
+        label = CLASS_MAPPING[obj_class]
         labels = torch.tensor([label for _ in boxes], dtype=torch.int64)
 
         target = {
@@ -119,6 +123,9 @@ class FasterRCNNDataset(Dataset):
             img = self.transforms(img)
         else:
             img = transforms.ToTensor()(img)
+
+        if labels[0].item() == 0:
+            print(f"[WARNING] Sample with background label only: {img_path}")
 
         return img, target, img_path
 
