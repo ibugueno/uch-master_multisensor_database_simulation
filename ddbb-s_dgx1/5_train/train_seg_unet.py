@@ -131,26 +131,45 @@ def save_example_outputs(preds, targets, paths, out_path):
     out_dir.mkdir(exist_ok=True)
 
     orientation_objects = defaultdict(list)
+
+    # Construye el dict con indices por objeto
     for i, path in enumerate(paths):
         if "orientation_88_-6_-34" in str(path):
             obj = str(path).split("/")[-3]
-            orientation_objects[obj].append(i)
+            orientation_objects[obj].append((path, i))
 
-    for obj, indices in orientation_objects.items():
-        if not indices:
+    # Procesa cada objeto
+    for obj, path_idx_list in orientation_objects.items():
+        if not path_idx_list:
             continue
-        idx = indices[len(indices)//2]  # toma el caso de la mitad
-        img = Image.open(paths[idx]).convert("RGB")
+
+        # Ordena por nombre de archivo
+        path_idx_list.sort(key=lambda x: os.path.basename(x[0]))
+
+        # Selecciona el índice de la mitad
+        selected_path, idx = path_idx_list[len(path_idx_list)//2]
+
+        # Carga imagenes
+        img = Image.open(selected_path).convert("RGB")
         pred_img = Image.fromarray((preds[idx].squeeze().cpu().numpy() > 0.5).astype(np.uint8)*255).convert("RGB")
         target_img = Image.fromarray((targets[idx].squeeze().cpu().numpy()).astype(np.uint8)*255).convert("RGB")
+
+        # Anota
         img = annotate(img, f"{obj} Input")
         pred_img = annotate(pred_img, "Predicted")
         target_img = annotate(target_img, "Expected")
+
+        # Concatena
         concatenated = Image.new("RGB", (img.width + pred_img.width + target_img.width, img.height))
         concatenated.paste(img, (0,0))
         concatenated.paste(pred_img, (img.width,0))
         concatenated.paste(target_img, (img.width + pred_img.width,0))
+
+        # Guarda
         concatenated.save(out_dir / f"example_{obj}_orientation_88_-6_-34.png")
+
+    print("[INFO] Saved examples for orientation_88_-6_-34 per object")
+
 
 
 def set_seed(seed):
