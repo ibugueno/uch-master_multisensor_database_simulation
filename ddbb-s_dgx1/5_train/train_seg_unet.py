@@ -161,10 +161,11 @@ def train_model(args):
     train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True, num_workers=4)
     val_loader = DataLoader(val_set, batch_size=args.batch_size, shuffle=False, num_workers=4)
 
-    model = smp.Unet(encoder_name="resnet18", encoder_weights="imagenet", in_channels=3, classes=1)
+    num_classes = len(class_mapping)
+    model = smp.Unet(encoder_name="resnet18", encoder_weights="imagenet", in_channels=3, classes=num_classes)
     model.to(device)
 
-    criterion = nn.BCEWithLogitsLoss()
+    criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
     out_path = Path(args.output_dir) / args.sensor
@@ -175,72 +176,79 @@ def train_model(args):
         yaml.dump(config, f)
 
     best_iou = 0
-    best_preds, best_targets, best_paths = None, None, None
     metrics_csv = out_path / "metrics.csv"
 
     with open(metrics_csv, mode='w', newline='') as file:
         writer = csv.writer(file)
-        writer.writerow(["epoch", "IoU", "Precision", "Recall", "F1-Score"])
+        header = ["epoch", "Mean IoU", "Pixel Acc"] + [f"Class_{cls}_{metric}" for cls in range(num_classes) for metric in ["IoU", "Precision", "Recall", "F1"]]
+        writer.writerow(header)
 
         for epoch in range(args.epochs):
-            print(f"[DEBUG] Epoch {epoch+1}: Training started at {time.strftime('%X')}")
-            start_train = time.time()
-
             model.train()
             for imgs, masks, _ in tqdm(train_loader, desc=f"Epoch {epoch+1} [Train]"):
-                imgs, masks = imgs.to(device), masks.to(device)
+                imgs, masks = imgs.to(device), masks.to(device).long().squeeze(1)
                 optimizer.zero_grad()
                 outputs = model(imgs)
                 loss = criterion(outputs, masks)
                 loss.backward()
                 optimizer.step()
 
-            print(f"[DEBUG] Epoch {epoch+1}: Training finished in {time.time() - start_train:.2f}s")
-
-            print(f"[DEBUG] Epoch {epoch+1}: Validation started at {time.strftime('%X')}")
-            start_val = time.time()
-
             model.eval()
-            all_preds, all_targets, all_paths = [], [], []
+            total_tp = np.zeros(num_classes)
+            total_fp = np.zeros(num_classes)
+            total_fn = np.zeros(num_classes)
+            correct_pixels = 0
+            total_pixels = 0
+
             with torch.no_grad():
                 for imgs, masks, paths in tqdm(val_loader, desc=f"Epoch {epoch+1} [Val]"):
-                    imgs, masks = imgs.to(device), masks.to(device)
+                    imgs, masks = imgs.to(device), masks.to(device).long().squeeze(1)
                     outputs = model(imgs)
-                    all_preds.append(outputs.cpu())
-                    all_targets.append(masks.cpu())
-                    all_paths.extend(paths)
+                    preds = torch.argmax(outputs, dim=1)
 
-            print(f"[DEBUG] Epoch {epoch+1}: Validation finished in {time.time() - start_val:.2f}s")
+                    preds_np = preds.cpu().numpy()
+                    masks_np = masks.cpu().numpy()
 
-            print(f"[DEBUG] Epoch {epoch+1}: Metrics calculation started at {time.strftime('%X')}")
-            start_metrics = time.time()
+                    correct_pixels += (preds_np == masks_np).sum()
+                    total_pixels += np.prod(masks_np.shape)
 
-            preds = torch.cat(all_preds)
-            targets = torch.cat(all_targets)
-            metrics = calculate_metrics(preds, targets)
+                    for cls in range(num_classes):
+                        tp = ((preds_np == cls) & (masks_np == cls)).sum()
+                        fp = ((preds_np == cls) & (masks_np != cls)).sum()
+                        fn = ((preds_np != cls) & (masks_np == cls)).sum()
+                        total_tp[cls] += tp
+                        total_fp[cls] += fp
+                        total_fn[cls] += fn
 
-            print(f"[DEBUG] Epoch {epoch+1}: Metrics calculation finished in {time.time() - start_metrics:.2f}s")
+            precision = total_tp / (total_tp + total_fp + 1e-6)
+            recall = total_tp / (total_tp + total_fn + 1e-6)
+            f1 = 2 * (precision * recall) / (precision + recall + 1e-6)
+            iou = total_tp / (total_tp + total_fp + total_fn + 1e-6)
 
-            writer.writerow([epoch + 1, metrics["IoU"], metrics["Precision"], metrics["Recall"], metrics["F1-Score"]])
+            pixel_acc = correct_pixels / total_pixels
+            mean_iou = np.mean(iou)
 
-            print(f"[DEBUG] Epoch {epoch+1}: Writing metrics to file at {time.strftime('%X')}")
+            # Save metrics
+            row = [epoch + 1, mean_iou, pixel_acc]
+            for cls in range(num_classes):
+                row += [iou[cls], precision[cls], recall[cls], f1[cls]]
+            writer.writerow(row)
 
+            # Save txt summary
             with open(out_path / "metrics.txt", "w") as f:
-                for k, v in metrics.items():
-                    f.write(f"{k}: {v:.4f}\n")
+                f.write(f"Epoch {epoch+1}\n")
+                f.write(f"Pixel Acc: {pixel_acc:.4f}\n")
+                f.write(f"Mean IoU: {mean_iou:.4f}\n")
+                for cls in range(num_classes):
+                    f.write(f"Class {cls}: IoU={iou[cls]:.4f}, Precision={precision[cls]:.4f}, Recall={recall[cls]:.4f}, F1={f1[cls]:.4f}\n")
 
-            print(f"[DEBUG] Epoch {epoch+1}: Metrics written at {time.strftime('%X')}")
-
-            if metrics["IoU"] > best_iou:
-                print(f"[DEBUG] Epoch {epoch+1}: Saving best model and outputs at {time.strftime('%X')}")
-                best_iou = metrics["IoU"]
-                best_preds, best_targets, best_paths = preds, targets, all_paths
+            # Save best model
+            if mean_iou > best_iou:
+                best_iou = mean_iou
                 torch.save(model.state_dict(), out_path / "model.pth")
-                print(f"[DEBUG] Epoch {epoch+1}: Best model saved at {time.strftime('%X')}")
 
-    print(f"[DEBUG] Saving example outputs at {time.strftime('%X')}")
-    save_example_outputs(best_preds, best_targets, best_paths, out_path)
     print(f"[DONE] Best model saved to {out_path / 'model.pth'}")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
