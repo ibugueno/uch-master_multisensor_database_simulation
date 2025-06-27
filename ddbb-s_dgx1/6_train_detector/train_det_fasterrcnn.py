@@ -139,7 +139,7 @@ def load_paths_det(data_txt, bbox_txt):
 
 def get_datasets(sensor, input_dir, scene):
     data_txt = os.path.join(input_dir, f"{sensor}_data_scene_{scene}.txt")
-    bbox_txt = os.path.join(input_dir, f"{sensor}_det-bbox-abs_scene_{scene}.txt")
+    bbox_txt = os.path.join(input_dir, f"{sensor}_det-bbox-abs-10ms_scene_{scene}.txt")
     img_paths, bbox_paths = load_paths_det(data_txt, bbox_txt)
 
     train_imgs, train_bboxes, val_imgs, val_bboxes = [], [], [], []
@@ -381,7 +381,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     data_txt = os.path.join(args.input_dir, f"{args.sensor}_data_scene_{args.scene}.txt")
-    bbox_txt = os.path.join(args.input_dir, f"{args.sensor}_det-bbox-abs_scene_{args.scene}.txt")
+    bbox_txt = os.path.join(args.input_dir, f"{args.sensor}_det-bbox-abs-10ms_scene_{args.scene}.txt")
     image_paths, bbox_paths = load_paths_det(data_txt, bbox_txt)
 
     train_dataset, val_dataset = get_datasets(args.sensor, args.input_dir, args.scene)

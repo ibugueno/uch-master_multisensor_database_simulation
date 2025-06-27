@@ -6,7 +6,7 @@ from train_det_fasterrcnn import load_paths_det, CLASS_MAPPING
 
 def list_dataset_classes_fast(sensor, input_dir, scene):
     data_txt = os.path.join(input_dir, f"{sensor}_data_scene_{scene}.txt")
-    bbox_txt = os.path.join(input_dir, f"{sensor}_det-bbox-abs_scene_{scene}.txt")
+    bbox_txt = os.path.join(input_dir, f"{sensor}_det-bbox-abs-10ms_scene_{scene}.txt")
     image_paths, bbox_paths = load_paths_det(data_txt, bbox_txt)
 
     class_counter = Counter()

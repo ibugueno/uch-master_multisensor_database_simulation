@@ -47,7 +47,7 @@ def process_sensor(sensor: str, base_root: str, output_dir: str, input_subpath: 
         lines = {
             "data": [],
             "mask-seg": [],
-            "det-bbox-abs": [],
+            "det-bbox-abs-10ms": [],
             "pose6d-abs": []
         }
 
@@ -57,7 +57,7 @@ def process_sensor(sensor: str, base_root: str, output_dir: str, input_subpath: 
             p = p.resolve()
             lines["data"].append(str(p))
             lines["mask-seg"].append(str(build_target_path(p, replace_map["mask-seg"])))
-            lines["det-bbox-abs"].append(str(build_target_path(p, replace_map["det-bbox-abs"], ".txt")))
+            lines["det-bbox-abs-10ms"].append(str(build_target_path(p, replace_map["det-bbox-abs-10ms"], ".txt")))
             lines["pose6d-abs"].append(str(build_target_path(p, replace_map["pose6d-abs"], ".txt")))
 
         for task, paths in lines.items():
@@ -73,7 +73,7 @@ def generate_txt_files(base_root: str, output_dir: str):
             "input_subpath": "events-frames2/davis346",
             "replace_map": {
                 "mask-seg": {"events-frames2": "frames", "events_noisy": "masks-seg"},
-                "det-bbox-abs": {"events-frames2": "frames", "events_noisy": "det-bbox-abs"},
+                "det-bbox-abs-10ms": {"events-frames2": "frames", "events_noisy": "det-bbox-abs-10ms"},
                 "pose6d-abs": {"events-frames2": "frames", "events_noisy": "pose6d-abs"},
             }
         },
@@ -81,7 +81,7 @@ def generate_txt_files(base_root: str, output_dir: str):
             "input_subpath": "events-frames2/evk4",
             "replace_map": {
                 "mask-seg": {"events-frames2": "frames", "events_noisy": "masks-seg"},
-                "det-bbox-abs": {"events-frames2": "frames", "events_noisy": "det-bbox-abs"},
+                "det-bbox-abs-10ms": {"events-frames2": "frames", "events_noisy": "det-bbox-abs-10ms"},
                 "pose6d-abs": {"events-frames2": "frames", "events_noisy": "pose6d-abs"},
             }
         },
@@ -89,7 +89,7 @@ def generate_txt_files(base_root: str, output_dir: str):
             "input_subpath": "frames/asus/images",
             "replace_map": {
                 "mask-seg": {"images": "masks-seg"},
-                "det-bbox-abs": {"images": "det-bbox-abs"},
+                "det-bbox-abs-10ms": {"images": "det-bbox-abs-10ms"},
                 "pose6d-abs": {"images": "pose6d-abs"},
             }
         }
@@ -100,8 +100,9 @@ def generate_txt_files(base_root: str, output_dir: str):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate dataset path .txt files for segmentation, detection, and pose tasks.")
-    parser.add_argument('--base_root', required=True, help='Root path where events-frames and frames directories are located.')
-    parser.add_argument('--output_dir', required=True, help='Directory to save the output .txt files.')
+    parser.add_argument('--base_root', default='../../input/', help='Root path where events-frames and frames directories are located. Default: ../../input/')
+    parser.add_argument('--output_dir', default='../../input/dataloader/', help='Directory to save the output .txt files. Default: ../../input/dataloader/')
     args = parser.parse_args()
 
     generate_txt_files(args.base_root, args.output_dir)
+
