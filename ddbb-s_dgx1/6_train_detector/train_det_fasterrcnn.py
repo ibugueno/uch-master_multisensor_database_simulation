@@ -202,15 +202,15 @@ def save_example_outputs(imgs, preds, targets, paths, out_path):
 
         if len(pred['boxes']) > 0:
             for box, label, score in zip(pred['boxes'], pred['labels'], pred['scores']):
-                draw_pred.rectangle(list(box), outline="red", width=2)
+                draw_pred.rectangle(list(box), outline="red", width=3)
                 draw_pred.text((box[0], box[1]), f"{label.item()}:{score:.2f}", fill="red")
 
         # === Imagen con ground truth ===
         gt_img = img_pil.copy()
         draw_gt = ImageDraw.Draw(gt_img)
         for box, label in zip(target['boxes'], target['labels']):
-            draw_gt.rectangle(list(box), outline="green", width=2)
-            draw_gt.text((box[0], box[1]), str(label.item()), fill="green")
+            draw_gt.rectangle(list(box), outline=(0, 255, 0), width=3)  # RGB verde brillante
+            draw_gt.text((box[0], box[1]), str(label.item()), fill=(0, 255, 0))
 
         # === Concatenar vertical ===
         total_height = img_pil.height * 3
