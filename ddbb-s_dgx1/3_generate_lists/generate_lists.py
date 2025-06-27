@@ -19,16 +19,16 @@ def build_target_path(img_path: Path, replace_map: dict, ext: str = None) -> Pat
     return Path(p)
 
 def group_by_scene(paths: list) -> dict:
-    grouped = {}
+    grouped = {f"scene_{i}": [] for i in range(4)}
     for path in paths:
         parts = path.parts
-        try:
-            scene_idx = parts.index("scene_0")  # change this if multiple scenes needed
-            scene_key = parts[scene_idx]
-            grouped.setdefault(scene_key, []).append(path)
-        except ValueError:
-            continue
-    print(f"[DEBUG] Grouped into {len(grouped)} scene(s).")
+        for i in range(4):
+            scene_key = f"scene_{i}"
+            if scene_key in parts:
+                grouped[scene_key].append(path)
+                break
+    grouped = {k: v for k, v in grouped.items() if v}
+    print(f"[DEBUG] Grouped into {len(grouped)} scene(s): {list(grouped.keys())}")
     return grouped
 
 def generate_txt_files_from_davis346(base_root: str, output_dir: str):
