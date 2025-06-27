@@ -190,36 +190,69 @@ def save_example_outputs(imgs, preds, targets, paths, out_path):
         else:
             idx = indices_sorted[len(indices_sorted)//2]
 
+
+def save_example_outputs(imgs, preds, targets, paths, out_path):
+    out_dir = Path(out_path) / "examples"
+    out_dir.mkdir(exist_ok=True)
+
+    orientation_objects = defaultdict(list)
+
+    # === Primer loop: agrupar (i, path) por objeto ===
+    for i, path in enumerate(paths):
+        if "orientation_88_-6_-34" in str(path):
+            obj = str(path).split("/")[-3]
+            orientation_objects[obj].append((i, path))
+
+    # === Segundo loop: procesar cada objeto ===
+    for obj in sorted(orientation_objects.keys()):
+        entries = orientation_objects[obj]
+        sorted_entries = sorted(entries, key=lambda x: os.path.basename(str(x[1])))
+
+        indices_sorted = [i for i, _ in sorted_entries]
+        if not indices_sorted:
+            continue
+
+        # === Selección index 60% o mitad ===
+        if "scene_2" in str(out_path):
+            idx = indices_sorted[int(0.6 * len(indices_sorted))]
+        else:
+            idx = indices_sorted[len(indices_sorted)//2]
+
         # === Recuperar imágenes y predicciones ===
         img = imgs[idx].cpu()
         img_pil = transforms.ToPILImage()(img)
+
+        # Resize to half if evk4
+        if "evk4" in str(paths[idx]):
+            resized_w, resized_h = img_pil.width // 2, img_pil.height // 2
+            img_pil = img_pil.resize((resized_w, resized_h), Image.BILINEAR)
+
         pred = preds[idx]
         target = targets[idx]
 
         # === Imagen con predicciones ===
-        pred_img = img_pil.copy()
+        pred_img = transforms.ToPILImage()(img)  # usar img original
         draw_pred = ImageDraw.Draw(pred_img)
-
         if len(pred['boxes']) > 0:
             for box, label, score in zip(pred['boxes'], pred['labels'], pred['scores']):
                 draw_pred.rectangle(list(box), outline="red", width=3)
                 draw_pred.text((box[0], box[1]), f"{label.item()}:{score:.2f}", fill="red")
 
         # === Imagen con ground truth ===
-        gt_img = img_pil.copy()
+        gt_img = transforms.ToPILImage()(img)  # usar img original
         draw_gt = ImageDraw.Draw(gt_img)
         for box, label in zip(target['boxes'], target['labels']):
-            draw_gt.rectangle(list(box), outline=(0, 255, 0), width=3)  # RGB verde brillante
+            draw_gt.rectangle(list(box), outline=(0, 255, 0), width=3)
             draw_gt.text((box[0], box[1]), str(label.item()), fill=(0, 255, 0))
 
         # === Concatenar vertical ===
-        total_height = img_pil.height * 3
-        max_width = img_pil.width
+        total_height = img_pil.height + pred_img.height + gt_img.height
+        max_width = max(img_pil.width, pred_img.width, gt_img.width)
 
         concatenated = Image.new("RGB", (max_width, total_height))
         concatenated.paste(img_pil, (0,0))
         concatenated.paste(pred_img, (0, img_pil.height))
-        concatenated.paste(gt_img, (0, img_pil.height*2))
+        concatenated.paste(gt_img, (0, img_pil.height + pred_img.height))
 
         concatenated.save(out_dir / f"example_{obj}_orientation_88_-6_-34.png")
 

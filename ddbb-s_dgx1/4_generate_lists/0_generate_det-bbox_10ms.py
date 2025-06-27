@@ -3,6 +3,7 @@
 import os
 from pathlib import Path
 import csv
+import shutil
 
 def process_bbox_file(src_file, next_file, dst_file):
     with open(src_file) as f:
@@ -61,8 +62,21 @@ def process_orientation_folder(orientation_path, output_orientation_path):
         dst_file = output_orientation_path / src_file.name
         process_bbox_file(src_file, next_file, dst_file)
 
+def copy_asus_det_bbox_abs(sensor):
+    src = BASE_PATH / sensor / "det-bbox-abs"
+    dst = BASE_PATH / sensor / OUTPUT_DIRNAME
+    print(f"[INFO] Copying {src} -> {dst}")
+    if WRITE_FILES:
+        if dst.exists():
+            shutil.rmtree(dst)
+        shutil.copytree(src, dst)
+
 def main():
     for sensor in SENSORS:
+        if sensor == "asus":
+            copy_asus_det_bbox_abs(sensor)
+            continue
+
         det_bbox_abs_path = BASE_PATH / sensor / "det-bbox-abs"
         output_base = BASE_PATH / sensor / OUTPUT_DIRNAME
 
@@ -80,6 +94,7 @@ def main():
                     #break
                 #break
             #break
+
 
 if __name__ == "__main__":
 
