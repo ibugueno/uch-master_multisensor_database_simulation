@@ -86,18 +86,23 @@ def get_datasets(sensor, input_dir, scene):
     val_dataset = SegmentationDataset(val_data, val_mask)
     return train_dataset, val_dataset
 
-def dice_score(preds, targets):
+def compute_iou(preds, targets):
     preds = preds > 0.5
     targets = targets > 0.5
-    intersection = (preds & targets).float().sum((1, 2))
-    union = preds.float().sum((1, 2)) + targets.float().sum((1, 2))
-    dice = (2. * intersection + 1e-6) / (union + 1e-6)
-    return dice.mean().item()
 
-def weighted_pixel_acc(preds, targets):
-    correct = (preds == targets).sum().item()
-    total = preds.numel()
-    return correct / total
+    # Object (1)
+    intersection_obj = (preds & targets).float().sum(dim=[1,2,3])
+    union_obj = (preds | targets).float().sum(dim=[1,2,3])
+    iou_obj = (intersection_obj + 1e-6) / (union_obj + 1e-6)
+
+    # Background (0)
+    preds_bg = ~preds
+    targets_bg = ~targets
+    intersection_bg = (preds_bg & targets_bg).float().sum(dim=[1,2,3])
+    union_bg = (preds_bg | targets_bg).float().sum(dim=[1,2,3])
+    iou_bg = (intersection_bg + 1e-6) / (union_bg + 1e-6)
+
+    return iou_obj, iou_bg
 
 def annotate(image, label):
     draw = ImageDraw.Draw(image)
@@ -105,26 +110,14 @@ def annotate(image, label):
         font = ImageFont.truetype("arial.ttf", size=20)
     except:
         font = ImageFont.load_default()
-
-    # Usa textbbox si existe, si no usa un método estimado
-    if hasattr(draw, "textbbox"):
-        bbox = draw.textbbox((0, 0), label, font=font)
-        text_width = bbox[2] - bbox[0]
-        text_height = bbox[3] - bbox[1]
-    else:
-        # Estima tamaño usando font.getsize si textbbox no está disponible
-        text_width, text_height = font.getsize(label)
-
+    text_width, text_height = font.getsize(label)
     bg_rect = [0, 0, text_width + 10, text_height + 10]
     draw.rectangle(bg_rect, fill="white")
     draw.text((5, 5), label, fill="black", font=font)
     return image
 
-
-
 def save_example_outputs(preds, targets, paths, out_path):
     out_dir = out_path / "examples"
-    print(f"save_example_outputs: {out_dir}")
     out_dir.mkdir(exist_ok=True)
 
     orientation_objects = defaultdict(list)
@@ -134,51 +127,27 @@ def save_example_outputs(preds, targets, paths, out_path):
             orientation_objects[obj].append(i)
 
     for obj, indices in orientation_objects.items():
-        half = len(indices) // 2
-        selected_indices = indices[:half]
-        for i in selected_indices:
-            img = Image.open(paths[i]).convert("RGB")
-            pred_img = Image.fromarray((preds[i].squeeze().cpu().numpy() > 0.5).astype(np.uint8) * 255).convert("RGB")
-            target_img = Image.fromarray((targets[i].squeeze().cpu().numpy()).astype(np.uint8) * 255).convert("RGB")
-            img = annotate(img, f"{obj} Input")
-            pred_img = annotate(pred_img, "Predicted")
-            target_img = annotate(target_img, "Expected")
-            concatenated = Image.new("RGB", (img.width + pred_img.width + target_img.width, img.height))
-            concatenated.paste(img, (0, 0))
-            concatenated.paste(pred_img, (img.width, 0))
-            concatenated.paste(target_img, (img.width + pred_img.width, 0))
-            concatenated.save(out_dir / f"example_{obj}_orientation_88_-6_-34.png")
-    print("[INFO] Saved examples for orientation_88_-6_-34")
+        if not indices:
+            continue
+        idx = indices[len(indices)//2]  # toma el caso de la mitad
+        img = Image.open(paths[idx]).convert("RGB")
+        pred_img = Image.fromarray((preds[idx].squeeze().cpu().numpy() > 0.5).astype(np.uint8)*255).convert("RGB")
+        target_img = Image.fromarray((targets[idx].squeeze().cpu().numpy()).astype(np.uint8)*255).convert("RGB")
+        img = annotate(img, f"{obj} Input")
+        pred_img = annotate(pred_img, "Predicted")
+        target_img = annotate(target_img, "Expected")
+        concatenated = Image.new("RGB", (img.width + pred_img.width + target_img.width, img.height))
+        concatenated.paste(img, (0,0))
+        concatenated.paste(pred_img, (img.width,0))
+        concatenated.paste(target_img, (img.width + pred_img.width,0))
+        concatenated.save(out_dir / f"example_{obj}_orientation_88_-6_-34.png")
+
 
 def set_seed(seed):
     torch.manual_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
     torch.cuda.manual_seed_all(seed)
-
-def compute_pos_weight(train_loader):
-    total_pos = 0
-    total_neg = 0
-    for imgs, masks, _ in train_loader:
-        total_pos += masks.sum().item()
-        total_neg += (masks.numel() - masks.sum().item())
-    pos_weight = total_neg / (total_pos + 1e-6)
-    return torch.tensor(pos_weight)
-
-def foreground_iou(preds, targets):
-    preds = preds > 0.5
-    targets = targets > 0.5
-    intersection = (preds & targets).float().sum((1, 2))
-    union = (preds | targets).float().sum((1, 2))
-    iou = (intersection + 1e-6) / (union + 1e-6)
-    return iou.mean().item()
-
-def positive_pixel_acc(preds, targets):
-    preds = preds > 0.5
-    targets = targets > 0.5
-    correct = (preds & targets).sum().item()
-    total = targets.sum().item() + 1e-6
-    return correct / total
 
 
 def train_model(args):
@@ -191,25 +160,21 @@ def train_model(args):
     model = smp.Unet(encoder_name="resnet18", encoder_weights="imagenet", in_channels=3, classes=1, activation=None)
     model.to(device)
 
-    pos_weight = compute_pos_weight(train_loader).to(device)
-    criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+    criterion = nn.BCEWithLogitsLoss()
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
     out_path = Path(args.output_dir) / f"{args.sensor}_scene_{args.scene}"
     out_path.mkdir(parents=True, exist_ok=True)
 
-    # Guardar configuración de entrenamiento
-    config = vars(args)
     with open(out_path / "config.yaml", 'w') as f:
-        yaml.dump(config, f)
+        yaml.dump(vars(args), f)
 
-    best_dice = 0
+    best_mean_iou = 0
     metrics_csv = out_path / "metrics.csv"
 
-    # Abrir CSV y escribir headers
     with open(metrics_csv, mode='w', newline='') as file:
         writer = csv.writer(file)
-        writer.writerow(["epoch", "PixelAcc", "MeanIoU", "Dice", "ForegroundIoU", "PositivePixelAcc"])
+        writer.writerow(["epoch", "MeanIoU_Object", "MeanIoU_Background", "MeanIoU"])
 
         for epoch in range(args.epochs):
             model.train()
@@ -222,9 +187,8 @@ def train_model(args):
                 optimizer.step()
 
             model.eval()
-            dices, ious, accs = [], [], []
-            fg_ious, pos_pix_accs = [], []
-            per_object = defaultdict(lambda: {"dice": [], "iou": [], "acc": [], "fg_iou": [], "pos_pix_acc": []})
+            iou_objs, iou_bgs = [], []
+            per_object = defaultdict(lambda: {"iou_obj": [], "iou_bg": []})
 
             with torch.no_grad():
                 for imgs, masks, paths in tqdm(val_loader, desc=f"Epoch {epoch+1} [Val]"):
@@ -232,58 +196,40 @@ def train_model(args):
                     outputs = model(imgs)
                     preds = torch.sigmoid(outputs) > 0.5
 
-                    # Calcular métricas batch globales
-                    dices.append(dice_score(preds, masks))
-                    ious.append(((preds.bool() & masks.bool()).sum().item()) / ((preds.bool() | masks.bool()).sum().item() + 1e-6))
-                    accs.append(weighted_pixel_acc(preds, masks))
-                    fg_ious.append(foreground_iou(preds, masks))
-                    pos_pix_accs.append(positive_pixel_acc(preds, masks))
+                    iou_obj, iou_bg = compute_iou(preds, masks)
+                    iou_objs.extend(iou_obj.cpu().numpy())
+                    iou_bgs.extend(iou_bg.cpu().numpy())
 
-                    # Métricas por objeto
                     for i, path in enumerate(paths):
                         obj = str(path).split("/")[-3]
-                        per_object[obj]["dice"].append(dice_score(preds[i:i+1], masks[i:i+1]))
-                        per_object[obj]["iou"].append(((preds[i].bool() & masks[i].bool()).sum().item()) / ((preds[i].bool() | masks[i].bool()).sum().item() + 1e-6))
-                        per_object[obj]["acc"].append(weighted_pixel_acc(preds[i], masks[i]))
-                        per_object[obj]["fg_iou"].append(foreground_iou(preds[i:i+1], masks[i:i+1]))
-                        per_object[obj]["pos_pix_acc"].append(positive_pixel_acc(preds[i:i+1], masks[i:i+1]))
+                        per_object[obj]["iou_obj"].append(iou_obj[i].item())
+                        per_object[obj]["iou_bg"].append(iou_bg[i].item())
 
-                # Guardar ejemplos
-                save_example_outputs(preds, masks, paths, out_path)
-
-            # Promedios globales
-            mean_dice = np.mean(dices)
-            mean_iou = np.mean(ious)
-            mean_acc = np.mean(accs)
-            mean_fg_iou = np.mean(fg_ious)
-            mean_pos_pix_acc = np.mean(pos_pix_accs)
+            mean_iou_obj = np.mean(iou_objs)
+            mean_iou_bg = np.mean(iou_bgs)
+            mean_iou = (mean_iou_obj + mean_iou_bg) / 2
 
             # Escribir en CSV
-            writer.writerow([epoch+1, mean_acc, mean_iou, mean_dice, mean_fg_iou, mean_pos_pix_acc])
+            writer.writerow([epoch+1, mean_iou_obj, mean_iou_bg, mean_iou])
 
             # Guardar métricas en .txt
             with open(out_path / "metrics.txt", "w") as f:
                 f.write(f"Epoch {epoch+1}\n")
-                f.write(f"PixelAcc: {mean_acc:.4f}\n")
-                f.write(f"MeanIoU: {mean_iou:.4f}\n")
-                f.write(f"Dice: {mean_dice:.4f}\n")
-                f.write(f"Foreground IoU: {mean_fg_iou:.4f}\n")
-                f.write(f"Positive Pixel Acc: {mean_pos_pix_acc:.4f}\n\n")
+                f.write(f"Mean IoU Object: {mean_iou_obj:.4f}\n")
+                f.write(f"Mean IoU Background: {mean_iou_bg:.4f}\n")
+                f.write(f"Mean IoU: {mean_iou:.4f}\n\n")
                 for obj in per_object:
                     f.write(f"Object: {obj}\n")
-                    f.write(f" Dice: {np.mean(per_object[obj]['dice']):.4f}\n")
-                    f.write(f" IoU: {np.mean(per_object[obj]['iou']):.4f}\n")
-                    f.write(f" Acc: {np.mean(per_object[obj]['acc']):.4f}\n")
-                    f.write(f" Foreground IoU: {np.mean(per_object[obj]['fg_iou']):.4f}\n")
-                    f.write(f" Positive Pixel Acc: {np.mean(per_object[obj]['pos_pix_acc']):.4f}\n\n")
+                    f.write(f" IoU Object: {np.mean(per_object[obj]['iou_obj']):.4f}\n")
+                    f.write(f" IoU Background: {np.mean(per_object[obj]['iou_bg']):.4f}\n\n")
 
-            # Guardar mejor modelo
-            if mean_dice > best_dice:
-                best_dice = mean_dice
+            # Guardar mejor modelo y ejemplos
+            if mean_iou > best_mean_iou:
+                best_mean_iou = mean_iou
                 torch.save(model.state_dict(), out_path / "best_model.pth")
+                save_example_outputs(preds, masks, paths, out_path)
 
     print(f"[DONE] Best model saved at {out_path / 'best_model.pth'}")
-
 
 
 if __name__ == "__main__":
