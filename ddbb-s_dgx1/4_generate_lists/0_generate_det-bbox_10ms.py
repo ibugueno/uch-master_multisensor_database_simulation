@@ -9,22 +9,29 @@ def process_bbox_file(src_file, next_file, dst_file):
         reader = csv.reader(f)
         header = next(reader)
         src_row = next(reader)
+        src_xmin, src_ymin, src_xmax, src_ymax = map(float, src_row)
 
     if next_file:
         with open(next_file) as f:
             reader = csv.reader(f)
             next_header = next(reader)
             next_row = next(reader)
-        xmax, ymax = next_row[2], next_row[3]
+        next_xmin, next_ymin, next_xmax, next_ymax = map(float, next_row)
         next_exists = True
+
+        # Combine values
+        xmin = min(src_xmin, next_xmin)
+        ymin = min(src_ymin, next_ymin)
+        xmax = max(src_xmax, next_xmax)
+        ymax = max(src_ymax, next_ymax)
     else:
-        xmax, ymax = src_row[2], src_row[3]
+        xmin, ymin, xmax, ymax = src_xmin, src_ymin, src_xmax, src_ymax
         next_exists = False
 
     # Print debug info
     print(f"[INFO] Processing src: {src_file}")
     print(f"       Using next: {next_file if next_file else 'None'} (exists: {next_exists})")
-    print(f"       Result -> xmin: {src_row[0]}, ymin: {src_row[1]}, xmax: {xmax}, ymax: {ymax}")
+    print(f"       Result -> xmin: {xmin}, ymin: {ymin}, xmax: {xmax}, ymax: {ymax}")
     print(f"       Writing to: {dst_file}" if WRITE_FILES else f"       [DRY RUN] Would write to: {dst_file}")
 
     if WRITE_FILES:
@@ -32,13 +39,12 @@ def process_bbox_file(src_file, next_file, dst_file):
         with open(dst_file, "w", newline='') as f:
             writer = csv.writer(f)
             writer.writerow(header)
-            writer.writerow([src_row[0], src_row[1], xmax, ymax])
+            writer.writerow([int(xmin), int(ymin), int(xmax), int(ymax)])
 
 def process_orientation_folder(orientation_path, output_orientation_path):
     files = sorted(orientation_path.glob("image_*.txt"))
     indices = [int(f.stem.split("_")[1]) for f in files]
     index_to_file = dict(zip(indices, files))
-    max_index = max(indices)
 
     for idx in indices:
         src_file = index_to_file[idx]
@@ -71,14 +77,11 @@ def main():
                         process_orientation_folder(orientation_dir, output_orientation_path)
 
                         break
-
                     break
                 break
             break
-        break
 
 if __name__ == "__main__":
-
 
     # Configurable flag
     WRITE_FILES = False
@@ -86,6 +89,5 @@ if __name__ == "__main__":
     BASE_PATH = Path("/app/input/frames")
     OUTPUT_DIRNAME = "det-bbox-abs-10ms"
     SENSORS = ["asus", "evk4", "davis346"]
-
 
     main()
