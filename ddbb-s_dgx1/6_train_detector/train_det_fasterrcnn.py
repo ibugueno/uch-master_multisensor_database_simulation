@@ -316,24 +316,29 @@ def train_eval(model, train_loader, val_loader, device, args):
 
         with open(out_path / "coco_gt.json", 'w') as f:
             json.dump(coco_gt_dict, f)
+
+        # Guardar coco_dt
         with open(out_path / "coco_dt.json", 'w') as f:
             json.dump(coco_dt, f)
 
-        coco_gt_obj = COCO(out_path / "coco_gt.json")
-        coco_dt_obj = coco_gt_obj.loadRes(out_path / "coco_dt.json")
-
-        coco_eval = COCOeval(coco_gt_obj, coco_dt_obj, iouType='bbox')
-
-
-        try:
-            coco_eval.evaluate()
-            coco_eval.accumulate()
-            coco_eval.summarize()
-            mAP_50 = coco_eval.stats[1]
-            mAP_95 = coco_eval.stats[0]
-        except Exception as e:
-            print(f"[WARNING] COCO evaluation failed: {e}")
+        # Verificar que sea lista
+        if not isinstance(coco_dt, list) or len(coco_dt) == 0:
+            print("[WARNING] No detections to evaluate. Skipping COCO evaluation for this epoch.")
             mAP_50, mAP_95 = 0.0, 0.0
+        else:
+            coco_gt_obj = COCO(out_path / "coco_gt.json")
+            coco_dt_obj = coco_gt_obj.loadRes(out_path / "coco_dt.json")
+
+            coco_eval = COCOeval(coco_gt_obj, coco_dt_obj, iouType='bbox')
+            try:
+                coco_eval.evaluate()
+                coco_eval.accumulate()
+                coco_eval.summarize()
+                mAP_50 = coco_eval.stats[1]
+                mAP_95 = coco_eval.stats[0]
+            except Exception as e:
+                print(f"[WARNING] COCO evaluation failed: {e}")
+                mAP_50, mAP_95 = 0.0, 0.0
 
 
         # Guardar en metrics.csv
