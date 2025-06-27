@@ -106,18 +106,20 @@ def annotate(image, label):
     except:
         font = ImageFont.load_default()
 
-    # Usa textbbox si existe, fallback a textsize
+    # Usa textbbox si existe, si no usa un método estimado
     if hasattr(draw, "textbbox"):
         bbox = draw.textbbox((0, 0), label, font=font)
         text_width = bbox[2] - bbox[0]
         text_height = bbox[3] - bbox[1]
     else:
-        text_width, text_height = draw.textsize(label, font=font)
+        # Estima tamaño usando font.getsize si textbbox no está disponible
+        text_width, text_height = font.getsize(label)
 
     bg_rect = [0, 0, text_width + 10, text_height + 10]
     draw.rectangle(bg_rect, fill="white")
     draw.text((5, 5), label, fill="black", font=font)
     return image
+
 
 
 def save_example_outputs(preds, targets, paths, out_path):
