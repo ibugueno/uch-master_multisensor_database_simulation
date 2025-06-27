@@ -168,7 +168,7 @@ def train_model(args):
             for imgs, masks, _ in tqdm(train_loader, desc=f"Epoch {epoch+1} [Train]"):
                 imgs, masks = imgs.to(device), masks.to(device)
                 optimizer.zero_grad()
-                outputs = model(imgs).squeeze(1)
+                outputs = model(imgs)  # sin squeeze
                 loss = criterion(outputs, masks)
                 loss.backward()
                 optimizer.step()
@@ -180,8 +180,10 @@ def train_model(args):
             with torch.no_grad():
                 for imgs, masks, paths in tqdm(val_loader, desc=f"Epoch {epoch+1} [Val]"):
                     imgs, masks = imgs.to(device), masks.to(device)
-                    outputs = model(imgs).squeeze(1)
+
+                    outputs = model(imgs)  # sin squeeze
                     preds = torch.sigmoid(outputs) > 0.5
+
                     dices.append(dice_score(preds, masks))
                     ious.append(((preds & masks).sum().item()) / ((preds | masks).sum().item() + 1e-6))
                     accs.append(weighted_pixel_acc(preds, masks))
