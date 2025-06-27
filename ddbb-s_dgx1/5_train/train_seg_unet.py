@@ -113,6 +113,7 @@ def annotate(image, label):
 
 def save_example_outputs(preds, targets, paths, out_path):
     out_dir = out_path / "examples"
+    print(f"save_example_outputs: {out_dir}")
     out_dir.mkdir(exist_ok=True)
     for i, path in enumerate(paths):
         if any(orient in str(path) for orient in VAL_ORIENTATIONS):
