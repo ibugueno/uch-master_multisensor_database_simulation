@@ -126,26 +126,60 @@ def save_example_outputs(preds, targets, paths, out_path):
     out_dir = out_path / "examples"
     print(f"save_example_outputs: {out_dir}")
     out_dir.mkdir(exist_ok=True)
+
+    orientation_objects = defaultdict(list)
     for i, path in enumerate(paths):
-        if any(orient in str(path) for orient in VAL_ORIENTATIONS):
-            img = Image.open(path).convert("RGB")
+        if "orientation_88_-6_-34" in str(path):
+            obj = str(path).split("/")[-3]
+            orientation_objects[obj].append(i)
+
+    for obj, indices in orientation_objects.items():
+        half = len(indices) // 2
+        selected_indices = indices[:half]
+        for i in selected_indices:
+            img = Image.open(paths[i]).convert("RGB")
             pred_img = Image.fromarray((preds[i].squeeze().cpu().numpy() > 0.5).astype(np.uint8) * 255).convert("RGB")
             target_img = Image.fromarray((targets[i].squeeze().cpu().numpy()).astype(np.uint8) * 255).convert("RGB")
-            img = annotate(img, "Input")
+            img = annotate(img, f"{obj} Input")
             pred_img = annotate(pred_img, "Predicted")
             target_img = annotate(target_img, "Expected")
             concatenated = Image.new("RGB", (img.width + pred_img.width + target_img.width, img.height))
             concatenated.paste(img, (0, 0))
             concatenated.paste(pred_img, (img.width, 0))
             concatenated.paste(target_img, (img.width + pred_img.width, 0))
-            orientation_name = [o for o in VAL_ORIENTATIONS if o in str(path)][0]
-            concatenated.save(out_dir / f"example_{orientation_name}.png")
+            concatenated.save(out_dir / f"example_{obj}_orientation_88_-6_-34.png")
+    print("[INFO] Saved examples for orientation_88_-6_-34")
 
 def set_seed(seed):
     torch.manual_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
     torch.cuda.manual_seed_all(seed)
+
+def compute_pos_weight(train_loader):
+    total_pos = 0
+    total_neg = 0
+    for imgs, masks, _ in train_loader:
+        total_pos += masks.sum().item()
+        total_neg += (masks.numel() - masks.sum().item())
+    pos_weight = total_neg / (total_pos + 1e-6)
+    return torch.tensor(pos_weight)
+
+def foreground_iou(preds, targets):
+    preds = preds > 0.5
+    targets = targets > 0.5
+    intersection = (preds & targets).float().sum((1, 2))
+    union = (preds | targets).float().sum((1, 2))
+    iou = (intersection + 1e-6) / (union + 1e-6)
+    return iou.mean().item()
+
+def positive_pixel_acc(preds, targets):
+    preds = preds > 0.5
+    targets = targets > 0.5
+    correct = (preds & targets).sum().item()
+    total = targets.sum().item() + 1e-6
+    return correct / total
+
 
 def train_model(args):
     set_seed(args.seed)
@@ -157,12 +191,14 @@ def train_model(args):
     model = smp.Unet(encoder_name="resnet18", encoder_weights="imagenet", in_channels=3, classes=1, activation=None)
     model.to(device)
 
-    criterion = nn.BCEWithLogitsLoss()
+    pos_weight = compute_pos_weight(train_loader).to(device)
+    criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
     out_path = Path(args.output_dir) / f"{args.sensor}_scene_{args.scene}"
     out_path.mkdir(parents=True, exist_ok=True)
 
+    # Guardar configuración de entrenamiento
     config = vars(args)
     with open(out_path / "config.yaml", 'w') as f:
         yaml.dump(config, f)
@@ -170,64 +206,85 @@ def train_model(args):
     best_dice = 0
     metrics_csv = out_path / "metrics.csv"
 
+    # Abrir CSV y escribir headers
     with open(metrics_csv, mode='w', newline='') as file:
         writer = csv.writer(file)
-        writer.writerow(["epoch", "PixelAcc", "MeanIoU", "Dice", "WeightedAcc"])
+        writer.writerow(["epoch", "PixelAcc", "MeanIoU", "Dice", "ForegroundIoU", "PositivePixelAcc"])
 
         for epoch in range(args.epochs):
             model.train()
             for imgs, masks, _ in tqdm(train_loader, desc=f"Epoch {epoch+1} [Train]"):
                 imgs, masks = imgs.to(device), masks.to(device)
                 optimizer.zero_grad()
-                outputs = model(imgs)  # sin squeeze
+                outputs = model(imgs)
                 loss = criterion(outputs, masks)
                 loss.backward()
                 optimizer.step()
 
             model.eval()
-            dices, ious, accs, weights = [], [], [], []
-            per_object = defaultdict(lambda: {"dice": [], "iou": [], "acc": []})
+            dices, ious, accs = [], [], []
+            fg_ious, pos_pix_accs = [], []
+            per_object = defaultdict(lambda: {"dice": [], "iou": [], "acc": [], "fg_iou": [], "pos_pix_acc": []})
 
             with torch.no_grad():
                 for imgs, masks, paths in tqdm(val_loader, desc=f"Epoch {epoch+1} [Val]"):
                     imgs, masks = imgs.to(device), masks.to(device)
-
-                    outputs = model(imgs)  # sin squeeze
+                    outputs = model(imgs)
                     preds = torch.sigmoid(outputs) > 0.5
 
+                    # Calcular métricas batch globales
                     dices.append(dice_score(preds, masks))
                     ious.append(((preds.bool() & masks.bool()).sum().item()) / ((preds.bool() | masks.bool()).sum().item() + 1e-6))
                     accs.append(weighted_pixel_acc(preds, masks))
+                    fg_ious.append(foreground_iou(preds, masks))
+                    pos_pix_accs.append(positive_pixel_acc(preds, masks))
+
+                    # Métricas por objeto
                     for i, path in enumerate(paths):
                         obj = str(path).split("/")[-3]
                         per_object[obj]["dice"].append(dice_score(preds[i:i+1], masks[i:i+1]))
                         per_object[obj]["iou"].append(((preds[i].bool() & masks[i].bool()).sum().item()) / ((preds[i].bool() | masks[i].bool()).sum().item() + 1e-6))
                         per_object[obj]["acc"].append(weighted_pixel_acc(preds[i], masks[i]))
+                        per_object[obj]["fg_iou"].append(foreground_iou(preds[i:i+1], masks[i:i+1]))
+                        per_object[obj]["pos_pix_acc"].append(positive_pixel_acc(preds[i:i+1], masks[i:i+1]))
 
+                # Guardar ejemplos
                 save_example_outputs(preds, masks, paths, out_path)
 
+            # Promedios globales
             mean_dice = np.mean(dices)
             mean_iou = np.mean(ious)
             mean_acc = np.mean(accs)
+            mean_fg_iou = np.mean(fg_ious)
+            mean_pos_pix_acc = np.mean(pos_pix_accs)
 
-            writer.writerow([epoch+1, mean_acc, mean_iou, mean_dice, mean_acc])
+            # Escribir en CSV
+            writer.writerow([epoch+1, mean_acc, mean_iou, mean_dice, mean_fg_iou, mean_pos_pix_acc])
 
+            # Guardar métricas en .txt
             with open(out_path / "metrics.txt", "w") as f:
                 f.write(f"Epoch {epoch+1}\n")
                 f.write(f"PixelAcc: {mean_acc:.4f}\n")
                 f.write(f"MeanIoU: {mean_iou:.4f}\n")
-                f.write(f"Dice: {mean_dice:.4f}\n\n")
+                f.write(f"Dice: {mean_dice:.4f}\n")
+                f.write(f"Foreground IoU: {mean_fg_iou:.4f}\n")
+                f.write(f"Positive Pixel Acc: {mean_pos_pix_acc:.4f}\n\n")
                 for obj in per_object:
                     f.write(f"Object: {obj}\n")
                     f.write(f" Dice: {np.mean(per_object[obj]['dice']):.4f}\n")
                     f.write(f" IoU: {np.mean(per_object[obj]['iou']):.4f}\n")
-                    f.write(f" Acc: {np.mean(per_object[obj]['acc']):.4f}\n\n")
+                    f.write(f" Acc: {np.mean(per_object[obj]['acc']):.4f}\n")
+                    f.write(f" Foreground IoU: {np.mean(per_object[obj]['fg_iou']):.4f}\n")
+                    f.write(f" Positive Pixel Acc: {np.mean(per_object[obj]['pos_pix_acc']):.4f}\n\n")
 
+            # Guardar mejor modelo
             if mean_dice > best_dice:
                 best_dice = mean_dice
                 torch.save(model.state_dict(), out_path / "best_model.pth")
 
     print(f"[DONE] Best model saved at {out_path / 'best_model.pth'}")
+
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
