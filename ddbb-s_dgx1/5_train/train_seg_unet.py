@@ -148,7 +148,8 @@ def save_example_outputs(preds, targets, paths, out_path):
         if not indices:
             continue
         # ordenar indices por nombre de archivo
-        sorted_indices = sorted(indices, key=lambda x: str(paths[x]))
+        sorted_indices = sorted(indices, key=lambda x: os.path.basename(str(paths[x])))
+
         idx = sorted_indices[len(sorted_indices)//2]  # toma el caso de la mitad
         img = Image.open(paths[idx]).convert("RGB")
         pred_img = Image.fromarray((preds[idx].squeeze().cpu().numpy() > 0.5).astype(np.uint8)*255).convert("RGB")
@@ -196,6 +197,14 @@ def train_model(args):
     with open(metrics_csv, mode='w', newline='') as file:
         writer = csv.writer(file)
         writer.writerow(["epoch", "MeanIoU_Object", "MeanIoU_Background", "MeanIoU"])
+
+        print("\n[DEBUG GLOBAL] List of all objects in val_set with orientation_88_-6_-34")
+        for img_path in val_set.image_paths:
+            if "orientation_88_-6_-34" in img_path:
+                obj = img_path.split("/")[-3]
+                print(f"[DEBUG GLOBAL] obj={obj}, path={img_path}")
+        print("[DEBUG GLOBAL] Finished listing all objects\n")
+
 
         for epoch in range(args.epochs):
             model.train()
