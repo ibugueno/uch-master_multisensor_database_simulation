@@ -105,11 +105,20 @@ def annotate(image, label):
         font = ImageFont.truetype("arial.ttf", size=20)
     except:
         font = ImageFont.load_default()
-    text_size = draw.textsize(label, font=font)
-    bg_rect = [0, 0, text_size[0] + 10, text_size[1] + 10]
+
+    # Usa textbbox si existe, fallback a textsize
+    if hasattr(draw, "textbbox"):
+        bbox = draw.textbbox((0, 0), label, font=font)
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
+    else:
+        text_width, text_height = draw.textsize(label, font=font)
+
+    bg_rect = [0, 0, text_width + 10, text_height + 10]
     draw.rectangle(bg_rect, fill="white")
     draw.text((5, 5), label, fill="black", font=font)
     return image
+
 
 def save_example_outputs(preds, targets, paths, out_path):
     out_dir = out_path / "examples"
