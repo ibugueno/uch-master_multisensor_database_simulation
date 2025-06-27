@@ -332,7 +332,6 @@ def train_eval(model, dataset, device, out_path, num_epochs=10, lr=1e-4):
 
 
 
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--sensor', required=True, choices=["asus", "davis346", "evk4"])
@@ -341,6 +340,7 @@ if __name__ == "__main__":
     parser.add_argument('--output_dir', required=True)
     parser.add_argument('--epochs', type=int, default=10)
     parser.add_argument('--lr', type=float, default=1e-4)
+    parser.add_argument('--gpu', type=int, default=0, help="GPU index to use (default: 0)")
     args = parser.parse_args()
 
     data_txt = os.path.join(args.input_dir, f"{args.sensor}_data_scene_{args.scene}.txt")
@@ -350,5 +350,9 @@ if __name__ == "__main__":
     dataset = FasterRCNNDataset(image_paths, bbox_paths, args.sensor, transforms=transforms.ToTensor())
     model = get_fasterrcnn_model(num_classes=len(CLASS_MAPPING)+1)
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # === Seleccionar GPU específica
+    device = torch.device(f"cuda:{args.gpu}" if torch.cuda.is_available() else "cpu")
+    print(f"[INFO] Using device: {device}")
+
     train_eval(model, dataset, device, args.output_dir, num_epochs=args.epochs, lr=args.lr)
+

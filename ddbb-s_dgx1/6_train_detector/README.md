@@ -10,8 +10,10 @@ python train_det_fasterrcnn.py \
 
 python train_det_fasterrcnn.py \
   --sensor asus \
+  --scene 0 \
   --gpu 0 \
   --input_dir /app/input/dataloader/ \
   --output_dir /app/output/det/
+
 
   df -h /dev/shm
