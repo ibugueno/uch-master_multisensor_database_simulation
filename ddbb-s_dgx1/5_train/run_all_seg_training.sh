@@ -9,17 +9,21 @@ sensors=(["asus"]=2 ["davis346"]=3 ["evk4"]=4)
 
 for sensor in "${!sensors[@]}"; do
     gpu="${sensors[$sensor]}"
-    session="training_seg_${sensor}"
-
-    tmux new-session -d -s $session "
-        python $SCRIPT_PATH \
-            --sensor $sensor \
-            --input_dir $INPUT_DIR \
-            --output_dir $OUTPUT_DIR \
-            --gpu $gpu ; \
-        echo '[INFO] Training for $sensor finished. Press Enter to close.' ; \
-        read
-    "
     
-    echo "[INFO] Started tmux session '$session' on GPU $gpu"
+    for scene in 0 1 2 3; do
+        session="training_seg_${sensor}_scene${scene}"
+
+        tmux new-session -d -s $session "
+            python $SCRIPT_PATH \
+                --sensor $sensor \
+                --scene $scene \
+                --input_dir $INPUT_DIR \
+                --output_dir $OUTPUT_DIR \
+                --gpu $gpu ; \
+            echo '[INFO] Training for $sensor scene $scene finished. Press Enter to close.' ; \
+            read
+        "
+
+        echo "[INFO] Started tmux session '$session' on GPU $gpu for scene $scene"
+    done
 done

@@ -4,36 +4,31 @@ import os
 import argparse
 import yaml
 from pathlib import Path
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
-from sklearn.metrics import confusion_matrix
-import matplotlib.pyplot as plt
-import segmentation_models_pytorch as smp
 from tqdm import tqdm
-import random
+import segmentation_models_pytorch as smp
 import csv
-from PIL import ImageDraw, ImageFont
-import time
-
-class_mapping = {
-    'almohada': 0, 'arbol': 1, 'avion': 2, 'boomerang': 3,
-    'caja_amarilla': 4, 'caja_azul': 5, 'carro_rojo': 6, 'clorox': 7,
-    'dino': 8, 'jarron': 9, 'lysoform': 10, 'mobil': 11,
-    'paleta': 12, 'pelota': 13, 'sombrero': 14, 'tarro': 15, 'zapatilla': 16
-}
-
-EXAMPLE_OBJECT_PATH = "orientation_88_-6_-34"
+import random
+from collections import defaultdict
 
 SENSOR_SHAPES = {
     "asus": (360, 640),
     "davis346": (260, 346),
     "evk4": (720, 1280)
 }
+
+VAL_ORIENTATIONS = [
+    "orientation_39_17_-102",
+    "orientation_19_31_21",
+    "orientation_-125_66_-116",
+    "orientation_88_-6_-34"
+]
 
 class SegmentationDataset(Dataset):
     def __init__(self, image_paths, mask_paths, transform=None):
@@ -70,35 +65,39 @@ def load_paths(data_txt, mask_txt):
         mask_paths = [line.strip() for line in f]
     return image_paths, mask_paths
 
-def get_datasets(sensor, input_dir):
-    train_data, train_mask = load_paths(
-        os.path.join(input_dir, f"{sensor}_data_scene_0.txt"),
-        os.path.join(input_dir, f"{sensor}_mask-seg_scene_0.txt")
-    )
-    val_data, val_mask = [], []
-    for i in [1, 2, 3]:
-        d, m = load_paths(
-            os.path.join(input_dir, f"{sensor}_data_scene_{i}.txt"),
-            os.path.join(input_dir, f"{sensor}_mask-seg_scene_{i}.txt")
-        )
-        val_data.extend(d)
-        val_mask.extend(m)
-    transform_train = get_transform(sensor)
-    return (
-        SegmentationDataset(train_data, train_mask, transform=transform_train),
-        SegmentationDataset(val_data, val_mask)
-    )
+def get_datasets(sensor, input_dir, scene):
+    data_txt = os.path.join(input_dir, f"{sensor}_data_scene_{scene}.txt")
+    mask_txt = os.path.join(input_dir, f"{sensor}_mask-seg_scene_{scene}.txt")
 
-def calculate_metrics(preds, targets):
+    img_paths, mask_paths = load_paths(data_txt, mask_txt)
+
+    train_data, train_mask, val_data, val_mask = [], [], [], []
+
+    for img, mask in zip(img_paths, mask_paths):
+        if any(orient in img for orient in VAL_ORIENTATIONS):
+            val_data.append(img)
+            val_mask.append(mask)
+        else:
+            train_data.append(img)
+            train_mask.append(mask)
+
+    transform_train = get_transform(sensor)
+    train_dataset = SegmentationDataset(train_data, train_mask, transform=transform_train)
+    val_dataset = SegmentationDataset(val_data, val_mask)
+    return train_dataset, val_dataset
+
+def dice_score(preds, targets):
     preds = preds > 0.5
     targets = targets > 0.5
-    cm = confusion_matrix(targets.view(-1).cpu(), preds.view(-1).cpu(), labels=[0, 1])
-    tn, fp, fn, tp = cm.ravel() if cm.size == 4 else (0, 0, 0, 0)
-    precision = tp / (tp + fp + 1e-6)
-    recall = tp / (tp + fn + 1e-6)
-    f1 = 2 * (precision * recall) / (precision + recall + 1e-6)
-    iou = tp / (tp + fp + fn + 1e-6)
-    return {"IoU": iou, "Precision": precision, "Recall": recall, "F1-Score": f1}
+    intersection = (preds & targets).float().sum((1, 2))
+    union = preds.float().sum((1, 2)) + targets.float().sum((1, 2))
+    dice = (2. * intersection + 1e-6) / (union + 1e-6)
+    return dice.mean().item()
+
+def weighted_pixel_acc(preds, targets):
+    correct = (preds == targets).sum().item()
+    total = preds.numel()
+    return correct / total
 
 def annotate(image, label):
     draw = ImageDraw.Draw(image)
@@ -113,40 +112,22 @@ def annotate(image, label):
     return image
 
 def save_example_outputs(preds, targets, paths, out_path):
-    from collections import defaultdict
-
     out_dir = out_path / "examples"
     out_dir.mkdir(exist_ok=True)
-
-    # Agrupar por orientación
-    orientation_groups = defaultdict(list)
-    for i, p in enumerate(paths):
-        if EXAMPLE_OBJECT_PATH in str(p):
-            orientation_groups[EXAMPLE_OBJECT_PATH].append((i, p))
-
-    for orientation, samples in orientation_groups.items():
-        # Ordenar por nombre de archivo
-        samples_sorted = sorted(samples, key=lambda x: str(x[1]))
-        mid_index = len(samples_sorted) // 2
-        idx, p = samples_sorted[mid_index]
-
-        pred = preds[idx]
-        target = targets[idx]
-
-        img = Image.open(p).convert("RGB")
-        pred_img = Image.fromarray((pred.squeeze().numpy() > 0.5).astype(np.uint8) * 255).convert("RGB")
-        target_img = Image.fromarray((target.squeeze().numpy()).astype(np.uint8) * 255).convert("RGB")
-
-        img = annotate(img, "Input")
-        pred_img = annotate(pred_img, "Predicted")
-        target_img = annotate(target_img, "Expected")
-
-        concatenated = Image.new("RGB", (img.width + pred_img.width + target_img.width, img.height))
-        concatenated.paste(img, (0, 0))
-        concatenated.paste(pred_img, (img.width, 0))
-        concatenated.paste(target_img, (img.width + pred_img.width, 0))
-        concatenated.save(out_dir / f"example_{orientation}.png")
-
+    for i, path in enumerate(paths):
+        if any(orient in str(path) for orient in VAL_ORIENTATIONS):
+            img = Image.open(path).convert("RGB")
+            pred_img = Image.fromarray((preds[i].squeeze().cpu().numpy() > 0.5).astype(np.uint8) * 255).convert("RGB")
+            target_img = Image.fromarray((targets[i].squeeze().cpu().numpy()).astype(np.uint8) * 255).convert("RGB")
+            img = annotate(img, "Input")
+            pred_img = annotate(pred_img, "Predicted")
+            target_img = annotate(target_img, "Expected")
+            concatenated = Image.new("RGB", (img.width + pred_img.width + target_img.width, img.height))
+            concatenated.paste(img, (0, 0))
+            concatenated.paste(pred_img, (img.width, 0))
+            concatenated.paste(target_img, (img.width + pred_img.width, 0))
+            orientation_name = [o for o in VAL_ORIENTATIONS if o in str(path)][0]
+            concatenated.save(out_dir / f"example_{orientation_name}.png")
 
 def set_seed(seed):
     torch.manual_seed(seed)
@@ -157,110 +138,95 @@ def set_seed(seed):
 def train_model(args):
     set_seed(args.seed)
     device = torch.device(f"cuda:{args.gpu}" if torch.cuda.is_available() else "cpu")
-    train_set, val_set = get_datasets(args.sensor, args.input_dir)
+    train_set, val_set = get_datasets(args.sensor, args.input_dir, args.scene)
     train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True, num_workers=4)
     val_loader = DataLoader(val_set, batch_size=args.batch_size, shuffle=False, num_workers=4)
 
-    num_classes = len(class_mapping)
-    model = smp.Unet(encoder_name="resnet18", encoder_weights="imagenet", in_channels=3, classes=num_classes)
+    model = smp.Unet(encoder_name="resnet18", encoder_weights="imagenet", in_channels=3, classes=1, activation=None)
     model.to(device)
 
-    criterion = nn.CrossEntropyLoss()
+    criterion = nn.BCEWithLogitsLoss()
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
-    out_path = Path(args.output_dir) / args.sensor
+    out_path = Path(args.output_dir) / f"{args.sensor}_scene_{args.scene}"
     out_path.mkdir(parents=True, exist_ok=True)
 
     config = vars(args)
     with open(out_path / "config.yaml", 'w') as f:
         yaml.dump(config, f)
 
-    best_iou = 0
+    best_dice = 0
     metrics_csv = out_path / "metrics.csv"
 
     with open(metrics_csv, mode='w', newline='') as file:
         writer = csv.writer(file)
-        header = ["epoch", "Mean IoU", "Pixel Acc"] + [f"Class_{cls}_{metric}" for cls in range(num_classes) for metric in ["IoU", "Precision", "Recall", "F1"]]
-        writer.writerow(header)
+        writer.writerow(["epoch", "PixelAcc", "MeanIoU", "Dice", "WeightedAcc"])
 
         for epoch in range(args.epochs):
             model.train()
             for imgs, masks, _ in tqdm(train_loader, desc=f"Epoch {epoch+1} [Train]"):
-                imgs, masks = imgs.to(device), masks.to(device).long().squeeze(1)
+                imgs, masks = imgs.to(device), masks.to(device)
                 optimizer.zero_grad()
-                outputs = model(imgs)
+                outputs = model(imgs).squeeze(1)
                 loss = criterion(outputs, masks)
                 loss.backward()
                 optimizer.step()
 
             model.eval()
-            total_tp = np.zeros(num_classes)
-            total_fp = np.zeros(num_classes)
-            total_fn = np.zeros(num_classes)
-            correct_pixels = 0
-            total_pixels = 0
+            dices, ious, accs, weights = [], [], [], []
+            per_object = defaultdict(lambda: {"dice": [], "iou": [], "acc": []})
 
             with torch.no_grad():
                 for imgs, masks, paths in tqdm(val_loader, desc=f"Epoch {epoch+1} [Val]"):
-                    imgs, masks = imgs.to(device), masks.to(device).long().squeeze(1)
-                    outputs = model(imgs)
-                    preds = torch.argmax(outputs, dim=1)
+                    imgs, masks = imgs.to(device), masks.to(device)
+                    outputs = model(imgs).squeeze(1)
+                    preds = torch.sigmoid(outputs) > 0.5
+                    dices.append(dice_score(preds, masks))
+                    ious.append(((preds & masks).sum().item()) / ((preds | masks).sum().item() + 1e-6))
+                    accs.append(weighted_pixel_acc(preds, masks))
+                    for i, path in enumerate(paths):
+                        obj = str(path).split("/")[-3]
+                        per_object[obj]["dice"].append(dice_score(preds[i:i+1], masks[i:i+1]))
+                        per_object[obj]["iou"].append(((preds[i] & masks[i]).sum().item()) / ((preds[i] | masks[i]).sum().item() + 1e-6))
+                        per_object[obj]["acc"].append(weighted_pixel_acc(preds[i], masks[i]))
 
-                    preds_np = preds.cpu().numpy()
-                    masks_np = masks.cpu().numpy()
+                save_example_outputs(preds, masks, paths, out_path)
 
-                    correct_pixels += (preds_np == masks_np).sum()
-                    total_pixels += np.prod(masks_np.shape)
+            mean_dice = np.mean(dices)
+            mean_iou = np.mean(ious)
+            mean_acc = np.mean(accs)
 
-                    for cls in range(num_classes):
-                        tp = ((preds_np == cls) & (masks_np == cls)).sum()
-                        fp = ((preds_np == cls) & (masks_np != cls)).sum()
-                        fn = ((preds_np != cls) & (masks_np == cls)).sum()
-                        total_tp[cls] += tp
-                        total_fp[cls] += fp
-                        total_fn[cls] += fn
+            writer.writerow([epoch+1, mean_acc, mean_iou, mean_dice, mean_acc])
 
-            precision = total_tp / (total_tp + total_fp + 1e-6)
-            recall = total_tp / (total_tp + total_fn + 1e-6)
-            f1 = 2 * (precision * recall) / (precision + recall + 1e-6)
-            iou = total_tp / (total_tp + total_fp + total_fn + 1e-6)
-
-            pixel_acc = correct_pixels / total_pixels
-            mean_iou = np.mean(iou)
-
-            # Save metrics
-            row = [epoch + 1, mean_iou, pixel_acc]
-            for cls in range(num_classes):
-                row += [iou[cls], precision[cls], recall[cls], f1[cls]]
-            writer.writerow(row)
-
-            # Save txt summary
             with open(out_path / "metrics.txt", "w") as f:
                 f.write(f"Epoch {epoch+1}\n")
-                f.write(f"Pixel Acc: {pixel_acc:.4f}\n")
-                f.write(f"Mean IoU: {mean_iou:.4f}\n")
-                for cls in range(num_classes):
-                    f.write(f"Class {cls}: IoU={iou[cls]:.4f}, Precision={precision[cls]:.4f}, Recall={recall[cls]:.4f}, F1={f1[cls]:.4f}\n")
+                f.write(f"PixelAcc: {mean_acc:.4f}\n")
+                f.write(f"MeanIoU: {mean_iou:.4f}\n")
+                f.write(f"Dice: {mean_dice:.4f}\n\n")
+                for obj in per_object:
+                    f.write(f"Object: {obj}\n")
+                    f.write(f" Dice: {np.mean(per_object[obj]['dice']):.4f}\n")
+                    f.write(f" IoU: {np.mean(per_object[obj]['iou']):.4f}\n")
+                    f.write(f" Acc: {np.mean(per_object[obj]['acc']):.4f}\n\n")
 
-            # Save best model
-            if mean_iou > best_iou:
-                best_iou = mean_iou
-                torch.save(model.state_dict(), out_path / "model.pth")
+            if mean_dice > best_dice:
+                best_dice = mean_dice
+                torch.save(model.state_dict(), out_path / "best_model.pth")
 
-    print(f"[DONE] Best model saved to {out_path / 'model.pth'}")
-
+    print(f"[DONE] Best model saved at {out_path / 'best_model.pth'}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--sensor', required=True, choices=["asus", "davis346", "evk4"], help='Sensor name')
-    parser.add_argument('--input_dir', required=True, help='Directory containing .txt lists')
-    parser.add_argument('--output_dir', required=True, help='Directory to store output models and results')
-    parser.add_argument('--gpu', type=int, default=0, help='GPU id to use')
-    parser.add_argument('--epochs', type=int, default=20, help='Number of training epochs')
-    parser.add_argument('--batch_size', type=int, default=16, help='Batch size')
-    parser.add_argument('--lr', type=float, default=1e-4, help='Learning rate')
-    parser.add_argument('--seed', type=int, default=42, help='Random seed for reproducibility')
+    parser.add_argument('--sensor', required=True, choices=["asus", "davis346", "evk4"])
+    parser.add_argument('--scene', required=True, type=int, choices=[0, 1, 2, 3])
+    parser.add_argument('--input_dir', required=True)
+    parser.add_argument('--output_dir', required=True)
+    parser.add_argument('--gpu', type=int, default=0)
+    parser.add_argument('--epochs', type=int, default=20)
+    parser.add_argument('--batch_size', type=int, default=8)
+    parser.add_argument('--lr', type=float, default=1e-4)
+    parser.add_argument('--seed', type=int, default=42)
     args = parser.parse_args()
 
-    print(f"[INFO] Training for sensor: {args.sensor}")
+    print(f"[INFO] Training for sensor: {args.sensor}, scene: {args.scene}")
     train_model(args)
