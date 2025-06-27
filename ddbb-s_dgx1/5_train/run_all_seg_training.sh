@@ -12,7 +12,7 @@ for sensor in "${!sensors[@]}"; do
     
     # Batch size dinámico
     if [ "$sensor" == "evk4" ]; then
-        batch_size=4
+        batch_size=8
     else
         batch_size=16
     fi

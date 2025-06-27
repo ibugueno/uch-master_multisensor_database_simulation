@@ -39,27 +39,39 @@ class SegmentationDataset(Dataset):
     def __len__(self):
         return len(self.image_paths)
 
+
     def __getitem__(self, idx):
         img = Image.open(self.image_paths[idx]).convert("RGB")
         mask = Image.open(self.mask_paths[idx]).convert("L")
-        mask = transforms.ToTensor()(mask)
-        mask = (mask > 0.5).float()  # solo umbraliza una vez aquí
+
+        # Resize explícito a la mitad solo si evk4
+        if "evk4" in self.image_paths[idx]:
+            resized_h, resized_w = SENSOR_SHAPES["evk4"][0] // 2, SENSOR_SHAPES["evk4"][1] // 2
+            img = img.resize((resized_w, resized_h), Image.BILINEAR)
+            mask = mask.resize((resized_w, resized_h), Image.NEAREST)  # usar NEAREST para máscaras binarias
 
         if self.transform:
             img = self.transform(img)
         else:
             img = transforms.ToTensor()(img)
 
+        mask = transforms.ToTensor()(mask)
+        mask = (mask > 0.5).float()
+
         return img, mask, self.image_paths[idx]
+
 
 def get_transform(sensor):
     h, w = SENSOR_SHAPES[sensor]
+    crop_size = (h//2, w//2) if sensor == "evk4" else (h, w)
+
     return transforms.Compose([
-        transforms.RandomResizedCrop(size=(h, w), scale=(0.8, 1.0)),
+        transforms.RandomResizedCrop(size=crop_size, scale=(0.8, 1.0)),
         transforms.RandomHorizontalFlip(),
         transforms.RandomRotation(degrees=10),
         transforms.ToTensor()
     ])
+
 
 def load_paths(data_txt, mask_txt):
     with open(data_txt) as f:
@@ -189,6 +201,34 @@ def set_seed(seed):
     random.seed(seed)
     torch.cuda.manual_seed_all(seed)
 
+def compute_metrics(preds, targets):
+    preds_bin = preds > 0.5
+    targets_bin = targets > 0.5
+
+    TP = (preds_bin & targets_bin).float().sum(dim=[1,2,3])
+    FP = (preds_bin & ~targets_bin).float().sum(dim=[1,2,3])
+    FN = (~preds_bin & targets_bin).float().sum(dim=[1,2,3])
+
+    # === IoU ===
+    union = TP + FP + FN
+    iou = TP / union
+    iou[union == 0] = float('nan')
+
+    # === Precision ===
+    denom_p = TP + FP
+    precision = TP / denom_p
+    precision[denom_p == 0] = float('nan')
+
+    # === Recall ===
+    denom_r = TP + FN
+    recall = TP / denom_r
+    recall[denom_r == 0] = float('nan')
+
+    # === Dice ===
+    dice = (2 * TP) / (2 * TP + FP + FN)
+    dice[(2 * TP + FP + FN) == 0] = float('nan')
+
+    return iou, dice, precision, recall, 
 
 
 def train_model(args):
@@ -216,7 +256,7 @@ def train_model(args):
     # === Apertura inicial del CSV para encabezados ===
     with open(metrics_csv, mode='w', newline='') as file:
         writer = csv.writer(file)
-        writer.writerow(["epoch", "MeanIoU_Object", "MeanIoU_Background", "MeanIoU"])
+        writer.writerow(["epoch", "MeanIoU", "MeanDice", "MeanPrecision", "MeanRecall"])
 
     for epoch in range(args.epochs):
         model.train()
@@ -229,8 +269,8 @@ def train_model(args):
             optimizer.step()
 
         model.eval()
-        iou_objs, iou_bgs = [], []
-        per_object = defaultdict(lambda: {"iou_obj": [], "iou_bg": []})
+        iou_list, dice_list, prec_list, recall_list = [], [], [], []
+        per_object = defaultdict(lambda: {"iou": [], "dice": [], "precision": [], "recall": []})
 
         # === NUEVO: acumuladores globales ===
         all_preds = []
@@ -243,41 +283,50 @@ def train_model(args):
                 outputs = model(imgs)
                 preds = torch.sigmoid(outputs) > 0.5
 
-                iou_obj, iou_bg = compute_iou(preds, masks)
-                iou_objs.extend(iou_obj.cpu().numpy())
-                iou_bgs.extend(iou_bg.cpu().numpy())
+                iou, dice, precision, recall = compute_metrics(preds, masks)
+
+                iou_list.extend(iou.cpu().numpy())
+                dice_list.extend(dice.cpu().numpy())
+                prec_list.extend(precision.cpu().numpy())
+                recall_list.extend(recall.cpu().numpy())
 
                 for i, path in enumerate(paths):
                     obj = str(path).split("/")[-3]
-                    per_object[obj]["iou_obj"].append(iou_obj[i].item())
-                    per_object[obj]["iou_bg"].append(iou_bg[i].item())
+                    per_object[obj]["iou"].append(iou[i].item())
+                    per_object[obj]["dice"].append(dice[i].item())
+                    per_object[obj]["precision"].append(precision[i].item())
+                    per_object[obj]["recall"].append(recall[i].item())
 
                 all_preds.append(preds.cpu())
                 all_masks.append(masks.cpu())
                 all_paths.extend(paths)
 
-        mean_iou_obj = np.mean(iou_objs) if len(iou_objs) > 0 else 0.0
-        mean_iou_bg = np.mean(iou_bgs) if len(iou_bgs) > 0 else 0.0
-        mean_iou = (mean_iou_obj + mean_iou_bg) / 2
+        # === Promedios globales (ignorando NaN) ===
+        mean_iou = np.nanmean(iou_list) if len(iou_list) > 0 else 0.0
+        mean_dice = np.nanmean(dice_list) if len(dice_list) > 0 else 0.0
+        mean_precision = np.nanmean(prec_list) if len(prec_list) > 0 else 0.0
+        mean_recall = np.nanmean(recall_list) if len(recall_list) > 0 else 0.0
 
-        # === Escritura en CSV solo si hay datos ===
-        if len(iou_objs) > 0 and len(iou_bgs) > 0:
-            with open(metrics_csv, mode='a', newline='') as file:
-                writer = csv.writer(file)
-                writer.writerow([epoch+1, mean_iou_obj, mean_iou_bg, mean_iou])
+        # === Escritura en CSV ===
+        with open(metrics_csv, mode='a', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow([epoch+1, mean_iou, mean_dice, mean_precision, mean_recall])
 
-        # Guardar métricas en .txt
+        # === Guardar métricas en .txt ===
         with open(out_path / "metrics.txt", "w") as f:
             f.write(f"Epoch {epoch+1}\n")
-            f.write(f"Mean IoU Object: {mean_iou_obj:.4f}\n")
-            f.write(f"Mean IoU Background: {mean_iou_bg:.4f}\n")
-            f.write(f"Mean IoU: {mean_iou:.4f}\n\n")
+            f.write(f"Mean IoU: {mean_iou:.4f}\n")
+            f.write(f"Mean Dice: {mean_dice:.4f}\n")
+            f.write(f"Mean Precision: {mean_precision:.4f}\n")
+            f.write(f"Mean Recall: {mean_recall:.4f}\n\n")
             for obj in per_object:
                 f.write(f"Object: {obj}\n")
-                f.write(f" IoU Object: {np.mean(per_object[obj]['iou_obj']):.4f}\n")
-                f.write(f" IoU Background: {np.mean(per_object[obj]['iou_bg']):.4f}\n\n")
+                f.write(f" IoU: {np.nanmean(per_object[obj]['iou']):.4f}\n")
+                f.write(f" Dice: {np.nanmean(per_object[obj]['dice']):.4f}\n")
+                f.write(f" Precision: {np.nanmean(per_object[obj]['precision']):.4f}\n")
+                f.write(f" Recall: {np.nanmean(per_object[obj]['recall']):.4f}\n\n")
 
-        # Guardar mejor modelo y ejemplos
+        # === Guardar mejor modelo y ejemplos ===
         if mean_iou > best_mean_iou:
             best_mean_iou = mean_iou
             torch.save(model.state_dict(), out_path / "best_model.pth")
@@ -287,6 +336,7 @@ def train_model(args):
             save_example_outputs(all_preds_cat, all_masks_cat, all_paths, out_path)
 
     print(f"[DONE] Best model saved at {out_path / 'best_model.pth'}")
+
 
 
 
