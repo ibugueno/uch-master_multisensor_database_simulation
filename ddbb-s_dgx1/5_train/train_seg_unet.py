@@ -131,11 +131,16 @@ def save_example_outputs(preds, targets, paths, out_path):
     out_dir.mkdir(exist_ok=True)
 
     # 🔍 DEBUG: verificar todos los paths que contienen orientation_88_-6_-34
-    print("\n[DEBUG] Checking all paths with orientation_88_-6_-34")
+    print("\n[DEBUG] Checking all paths with orientation_88_-6_-34 (ordered by filename)")
+    debug_list = []
     for i, path in enumerate(paths):
         if "orientation_88_-6_-34" in str(path):
             obj = str(path).split("/")[-3]
-            print(f"[DEBUG] i={i}, obj={obj}, path={path}")
+            debug_list.append( (i, obj, str(path)) )
+    # ordenar por nombre de archivo
+    debug_list_sorted = sorted(debug_list, key=lambda x: os.path.basename(x[2]))
+    for i, obj, path_str in debug_list_sorted:
+        print(f"[DEBUG] i={i}, obj={obj}, path={path_str}")
     print("[DEBUG] Finished listing paths\n")
 
     orientation_objects = defaultdict(list)
@@ -198,12 +203,12 @@ def train_model(args):
         writer = csv.writer(file)
         writer.writerow(["epoch", "MeanIoU_Object", "MeanIoU_Background", "MeanIoU"])
 
-        print("\n[DEBUG GLOBAL] List of all objects in val_set with orientation_88_-6_-34")
+        #print("\n[DEBUG GLOBAL] List of all objects in val_set with orientation_88_-6_-34")
         for img_path in val_set.image_paths:
             if "orientation_88_-6_-34" in img_path:
                 obj = img_path.split("/")[-3]
-                print(f"[DEBUG GLOBAL] obj={obj}, path={img_path}")
-        print("[DEBUG GLOBAL] Finished listing all objects\n")
+                #print(f"[DEBUG GLOBAL] obj={obj}, path={img_path}")
+        #print("[DEBUG GLOBAL] Finished listing all objects\n")
 
 
         for epoch in range(args.epochs):
