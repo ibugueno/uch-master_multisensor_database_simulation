@@ -190,6 +190,7 @@ def set_seed(seed):
     torch.cuda.manual_seed_all(seed)
 
 
+
 def train_model(args):
     set_seed(args.seed)
     device = torch.device(f"cuda:{args.gpu}" if torch.cuda.is_available() else "cpu")
@@ -212,86 +213,81 @@ def train_model(args):
     best_mean_iou = 0
     metrics_csv = out_path / "metrics.csv"
 
+    # === Apertura inicial del CSV para encabezados ===
     with open(metrics_csv, mode='w', newline='') as file:
         writer = csv.writer(file)
         writer.writerow(["epoch", "MeanIoU_Object", "MeanIoU_Background", "MeanIoU"])
 
-        #print("\n[DEBUG GLOBAL] List of all objects in val_set with orientation_88_-6_-34")
-        for img_path in val_set.image_paths:
-            if "orientation_88_-6_-34" in img_path:
-                obj = img_path.split("/")[-3]
-                #print(f"[DEBUG GLOBAL] obj={obj}, path={img_path}")
-        #print("[DEBUG GLOBAL] Finished listing all objects\n")
+    for epoch in range(args.epochs):
+        model.train()
+        for imgs, masks, _ in tqdm(train_loader, desc=f"Epoch {epoch+1} [Train]"):
+            imgs, masks = imgs.to(device), masks.to(device)
+            optimizer.zero_grad()
+            outputs = model(imgs)
+            loss = criterion(outputs, masks)
+            loss.backward()
+            optimizer.step()
 
+        model.eval()
+        iou_objs, iou_bgs = [], []
+        per_object = defaultdict(lambda: {"iou_obj": [], "iou_bg": []})
 
-        for epoch in range(args.epochs):
-            model.train()
-            for imgs, masks, _ in tqdm(train_loader, desc=f"Epoch {epoch+1} [Train]"):
+        # === NUEVO: acumuladores globales ===
+        all_preds = []
+        all_masks = []
+        all_paths = []
+
+        with torch.no_grad():
+            for imgs, masks, paths in tqdm(val_loader, desc=f"Epoch {epoch+1} [Val]"):
                 imgs, masks = imgs.to(device), masks.to(device)
-                optimizer.zero_grad()
                 outputs = model(imgs)
-                loss = criterion(outputs, masks)
-                loss.backward()
-                optimizer.step()
+                preds = torch.sigmoid(outputs) > 0.5
 
-            model.eval()
-            iou_objs, iou_bgs = [], []
-            per_object = defaultdict(lambda: {"iou_obj": [], "iou_bg": []})
+                iou_obj, iou_bg = compute_iou(preds, masks)
+                iou_objs.extend(iou_obj.cpu().numpy())
+                iou_bgs.extend(iou_bg.cpu().numpy())
 
-            # === NUEVO: acumuladores globales ===
-            all_preds = []
-            all_masks = []
-            all_paths = []
+                for i, path in enumerate(paths):
+                    obj = str(path).split("/")[-3]
+                    per_object[obj]["iou_obj"].append(iou_obj[i].item())
+                    per_object[obj]["iou_bg"].append(iou_bg[i].item())
 
-            with torch.no_grad():
-                for imgs, masks, paths in tqdm(val_loader, desc=f"Epoch {epoch+1} [Val]"):
-                    imgs, masks = imgs.to(device), masks.to(device)
-                    outputs = model(imgs)
-                    preds = torch.sigmoid(outputs) > 0.5
+                all_preds.append(preds.cpu())
+                all_masks.append(masks.cpu())
+                all_paths.extend(paths)
 
-                    iou_obj, iou_bg = compute_iou(preds, masks)
-                    iou_objs.extend(iou_obj.cpu().numpy())
-                    iou_bgs.extend(iou_bg.cpu().numpy())
+        mean_iou_obj = np.mean(iou_objs) if len(iou_objs) > 0 else 0.0
+        mean_iou_bg = np.mean(iou_bgs) if len(iou_bgs) > 0 else 0.0
+        mean_iou = (mean_iou_obj + mean_iou_bg) / 2
 
-                    for i, path in enumerate(paths):
-                        obj = str(path).split("/")[-3]
-                        per_object[obj]["iou_obj"].append(iou_obj[i].item())
-                        per_object[obj]["iou_bg"].append(iou_bg[i].item())
+        # === Escritura en CSV solo si hay datos ===
+        if len(iou_objs) > 0 and len(iou_bgs) > 0:
+            with open(metrics_csv, mode='a', newline='') as file:
+                writer = csv.writer(file)
+                writer.writerow([epoch+1, mean_iou_obj, mean_iou_bg, mean_iou])
 
-                    # === acumular para ejemplos ===
-                    all_preds.append(preds.cpu())
-                    all_masks.append(masks.cpu())
-                    all_paths.extend(paths)
+        # Guardar métricas en .txt
+        with open(out_path / "metrics.txt", "w") as f:
+            f.write(f"Epoch {epoch+1}\n")
+            f.write(f"Mean IoU Object: {mean_iou_obj:.4f}\n")
+            f.write(f"Mean IoU Background: {mean_iou_bg:.4f}\n")
+            f.write(f"Mean IoU: {mean_iou:.4f}\n\n")
+            for obj in per_object:
+                f.write(f"Object: {obj}\n")
+                f.write(f" IoU Object: {np.mean(per_object[obj]['iou_obj']):.4f}\n")
+                f.write(f" IoU Background: {np.mean(per_object[obj]['iou_bg']):.4f}\n\n")
 
-            mean_iou_obj = np.mean(iou_objs)
-            mean_iou_bg = np.mean(iou_bgs)
-            mean_iou = (mean_iou_obj + mean_iou_bg) / 2
+        # Guardar mejor modelo y ejemplos
+        if mean_iou > best_mean_iou:
+            best_mean_iou = mean_iou
+            torch.save(model.state_dict(), out_path / "best_model.pth")
 
-            # Escribir en CSV
-            writer.writerow([epoch+1, mean_iou_obj, mean_iou_bg, mean_iou])
-
-            # Guardar métricas en .txt
-            with open(out_path / "metrics.txt", "w") as f:
-                f.write(f"Epoch {epoch+1}\n")
-                f.write(f"Mean IoU Object: {mean_iou_obj:.4f}\n")
-                f.write(f"Mean IoU Background: {mean_iou_bg:.4f}\n")
-                f.write(f"Mean IoU: {mean_iou:.4f}\n\n")
-                for obj in per_object:
-                    f.write(f"Object: {obj}\n")
-                    f.write(f" IoU Object: {np.mean(per_object[obj]['iou_obj']):.4f}\n")
-                    f.write(f" IoU Background: {np.mean(per_object[obj]['iou_bg']):.4f}\n\n")
-
-            # Guardar mejor modelo y ejemplos
-            if mean_iou > best_mean_iou:
-                best_mean_iou = mean_iou
-                torch.save(model.state_dict(), out_path / "best_model.pth")
-
-                # === concatenar y guardar ejemplos ===
-                all_preds_cat = torch.cat(all_preds, dim=0)
-                all_masks_cat = torch.cat(all_masks, dim=0)
-                save_example_outputs(all_preds_cat, all_masks_cat, all_paths, out_path)
+            all_preds_cat = torch.cat(all_preds, dim=0)
+            all_masks_cat = torch.cat(all_masks, dim=0)
+            save_example_outputs(all_preds_cat, all_masks_cat, all_paths, out_path)
 
     print(f"[DONE] Best model saved at {out_path / 'best_model.pth'}")
+
 
 
 
