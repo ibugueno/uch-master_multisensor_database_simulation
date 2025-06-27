@@ -4,20 +4,17 @@ SCRIPT_PATH="train_det_fasterrcnn.py"
 INPUT_DIR="/app/input/dataloader/"
 OUTPUT_DIR="/app/output/det/"
 
-declare -A sensors
-sensors=(["asus"]=5 ["davis346"]=6 ["evk4"]=7)
+declare -A base_gpus
+base_gpus=(["asus"]=0 ["davis346"]=4)
 
-for sensor in "${!sensors[@]}"; do
-    gpu="${sensors[$sensor]}"
+for sensor in "asus" "davis346"; do
+    base_gpu=${base_gpus[$sensor]}
     
-    # Batch size dinámico
-    if [ "$sensor" == "evk4" ]; then
-        batch_size=16
-    else
-        batch_size=16
-    fi
+    # Batch size fijo en 8 para ambos
+    batch_size=8
 
     for scene in 0 1 2 3; do
+        gpu=$((base_gpu + scene))
         session="training_det_${sensor}_scene${scene}"
 
         tmux new-session -d -s $session "
