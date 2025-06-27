@@ -110,8 +110,18 @@ def annotate(image, label):
         font = ImageFont.truetype("arial.ttf", size=20)
     except:
         font = ImageFont.load_default()
-    text_width, text_height = font.getsize(label)
-    bg_rect = [0, 0, text_width + 10, text_height + 10]
+
+    # Usa textbbox si existe, fallback a estimación simple
+    if hasattr(draw, "textbbox"):
+        bbox = draw.textbbox((0, 0), label, font=font)
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
+    else:
+        # Estimación manual si no existe textbbox ni textsize
+        text_width = len(label) * font.size * 0.6
+        text_height = font.size
+
+    bg_rect = [0, 0, int(text_width + 10), int(text_height + 10)]
     draw.rectangle(bg_rect, fill="white")
     draw.text((5, 5), label, fill="black", font=font)
     return image
