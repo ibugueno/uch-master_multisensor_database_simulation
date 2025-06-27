@@ -5,14 +5,17 @@ import argparse
 from pathlib import Path
 
 def collect_image_paths(input_root: str) -> list:
-    return list(Path(input_root).rglob("*.jpg"))
+    print(f"[DEBUG] Searching for .jpg files in {input_root}...")
+    jpg_files = list(Path(input_root).rglob("*.jpg"))
+    print(f"[DEBUG] Found {len(jpg_files)} .jpg files.")
+    return jpg_files
 
 def build_target_path(img_path: Path, replace_map: dict, ext: str = None) -> Path:
     p = str(img_path)
     for old, new in replace_map.items():
         p = p.replace(old, new)
     if ext:
-        p = Path(p).with_suffix(ext)
+        p = str(Path(p).with_suffix(ext))
     return Path(p)
 
 def group_by_scene(paths: list) -> dict:
@@ -25,6 +28,7 @@ def group_by_scene(paths: list) -> dict:
             grouped.setdefault(scene_key, []).append(path)
         except ValueError:
             continue
+    print(f"[DEBUG] Grouped into {len(grouped)} scene(s).")
     return grouped
 
 def generate_txt_files_from_davis346(base_root: str, output_dir: str):
@@ -55,12 +59,14 @@ def generate_txt_files_from_davis346(base_root: str, output_dir: str):
             "pose6d-abs": []
         }
 
+        print(f"[DEBUG] Processing scene: {scene} with {len(img_paths)} images")
+
         for p in img_paths:
             p = p.resolve()
             lines_davis["data"].append(str(p))
-            lines_davis["mask-seg"].append(build_target_path(p, {"events-frames": "frames", "events_noisy": "masks-seg"}))
-            lines_davis["det-bbox-abs"].append(build_target_path(p, {"events-frames": "frames", "events_noisy": "det-bbox-abs"}, ".txt"))
-            lines_davis["pose6d-abs"].append(build_target_path(p, {"events-frames": "frames", "events_noisy": "pose6d-abs"}, ".txt"))
+            lines_davis["mask-seg"].append(str(build_target_path(p, {"events-frames": "frames", "events_noisy": "masks-seg"})))
+            lines_davis["det-bbox-abs"].append(str(build_target_path(p, {"events-frames": "frames", "events_noisy": "det-bbox-abs"}, ".txt")))
+            lines_davis["pose6d-abs"].append(str(build_target_path(p, {"events-frames": "frames", "events_noisy": "pose6d-abs"}, ".txt")))
 
         # Guardar archivos davis346
         for task, paths in lines_davis.items():
@@ -68,6 +74,7 @@ def generate_txt_files_from_davis346(base_root: str, output_dir: str):
             out_path.parent.mkdir(parents=True, exist_ok=True)
             with open(out_path, 'w') as f:
                 f.write('\n'.join(map(str, paths)))
+            print(f"[DEBUG] Saved: {out_path} with {len(paths)} entries")
 
         # Reutilizar para evk4 y asus
         for sensor in ["evk4", "asus"]:
@@ -78,13 +85,13 @@ def generate_txt_files_from_davis346(base_root: str, output_dir: str):
                     for old, new in replacements["davis346"][sensor]:
                         new_path = new_path.replace(old, new)
                     if sensor == "asus":
-                        new_path = new_path.replace("masks-seg", "masks-seg")
-                        new_path = new_path.replace("det-bbox-abs", "det-bbox-abs").replace(".jpg", ".txt") if task == "det-bbox-abs" else new_path
-                        new_path = new_path.replace("pose6d-abs", "pose6d-abs").replace(".jpg", ".txt") if task == "pose6d-abs" else new_path
+                        if task == "det-bbox-abs" or task == "pose6d-abs":
+                            new_path = new_path.replace(".jpg", ".txt")
                     lines.append(new_path)
                 out_path = Path(output_dir) / f"{sensor}_{task}_{scene}.txt"
                 with open(out_path, 'w') as f:
                     f.write('\n'.join(lines))
+                print(f"[DEBUG] Saved: {out_path} with {len(lines)} entries")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate dataset path .txt files for segmentation, detection, and pose tasks.")
