@@ -159,17 +159,26 @@ def save_example_outputs(preds, targets, paths, out_path):
         # ordenar indices por nombre de archivo
         sorted_indices = sorted(indices, key=lambda x: os.path.basename(str(paths[x])))
 
-        idx = sorted_indices[len(sorted_indices)//2]  # toma el caso de la mitad
+        if "scene_2" in str(out_path):
+            idx = sorted_indices[int(0.6 * len(sorted_indices))]
+        else:
+            idx = sorted_indices[len(sorted_indices)//2]  # mitad para otras escenas
+
+
         img = Image.open(paths[idx]).convert("RGB")
         pred_img = Image.fromarray((preds[idx].squeeze().cpu().numpy() > 0.5).astype(np.uint8)*255).convert("RGB")
         target_img = Image.fromarray((targets[idx].squeeze().cpu().numpy()).astype(np.uint8)*255).convert("RGB")
-        img = annotate(img, f"{obj} Input")
-        pred_img = annotate(pred_img, "Predicted")
-        target_img = annotate(target_img, "Expected")
-        concatenated = Image.new("RGB", (img.width + pred_img.width + target_img.width, img.height))
+
+        # Calcular altura total y ancho máximo
+        total_height = img.height + pred_img.height + target_img.height
+        max_width = max(img.width, pred_img.width, target_img.width)
+
+        concatenated = Image.new("RGB", (max_width, total_height))
         concatenated.paste(img, (0,0))
-        concatenated.paste(pred_img, (img.width,0))
-        concatenated.paste(target_img, (img.width + pred_img.width,0))
+        concatenated.paste(pred_img, (0, img.height))
+        concatenated.paste(target_img, (0, img.height + pred_img.height))
+
+
         concatenated.save(out_dir / f"example_{obj}_orientation_88_-6_-34.png")
 
 
