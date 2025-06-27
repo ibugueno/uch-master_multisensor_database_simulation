@@ -52,7 +52,6 @@ class SegmentationDataset(Dataset):
 
         return img, mask, self.image_paths[idx]
 
-
 def get_transform(sensor):
     h, w = SENSOR_SHAPES[sensor]
     return transforms.Compose([
@@ -144,7 +143,7 @@ def save_example_outputs(preds, targets, paths, out_path):
 
     for obj in sorted(orientation_objects.keys()):
         sorted_entries = sorted(orientation_objects[obj], key=lambda x: os.path.basename(str(x[1])))
-        for i, path in sorted_entries:
+        #for i, path in sorted_entries:
             #print(f"[DEBUG] i={i}, obj={obj}, path={path}")
     #print("[DEBUG] Finished listing paths\n")
 
