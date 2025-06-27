@@ -211,7 +211,7 @@ if __name__ == "__main__":
     parser.add_argument('--output_dir', required=True, help='Directory to store output models and results')
     parser.add_argument('--gpu', type=int, default=0, help='GPU id to use')
     parser.add_argument('--epochs', type=int, default=20, help='Number of training epochs')
-    parser.add_argument('--batch_size', type=int, default=64, help='Batch size')
+    parser.add_argument('--batch_size', type=int, default=32, help='Batch size')
     parser.add_argument('--lr', type=float, default=1e-4, help='Learning rate')
     parser.add_argument('--seed', type=int, default=42, help='Random seed for reproducibility')
     args = parser.parse_args()

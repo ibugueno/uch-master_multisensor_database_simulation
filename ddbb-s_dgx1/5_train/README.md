@@ -13,3 +13,5 @@ python train_seg_unet.py \
   --gpu 2 \
   --input_dir /app/input/dataloader/ \
   --output_dir /app/output/seg/
+
+  df -h /dev/shm
