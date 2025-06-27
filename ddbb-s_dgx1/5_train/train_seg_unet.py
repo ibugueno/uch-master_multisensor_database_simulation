@@ -182,6 +182,9 @@ def train_model(args):
         writer.writerow(["epoch", "IoU", "Precision", "Recall", "F1-Score"])
 
         for epoch in range(args.epochs):
+            print(f"[DEBUG] Epoch {epoch+1}: Training started at {time.strftime('%X')}")
+            start_train = time.time()
+
             model.train()
             for imgs, masks, _ in tqdm(train_loader, desc=f"Epoch {epoch+1} [Train]"):
                 imgs, masks = imgs.to(device), masks.to(device)
@@ -190,6 +193,11 @@ def train_model(args):
                 loss = criterion(outputs, masks)
                 loss.backward()
                 optimizer.step()
+
+            print(f"[DEBUG] Epoch {epoch+1}: Training finished in {time.time() - start_train:.2f}s")
+
+            print(f"[DEBUG] Epoch {epoch+1}: Validation started at {time.strftime('%X')}")
+            start_val = time.time()
 
             model.eval()
             all_preds, all_targets, all_paths = [], [], []
@@ -201,21 +209,35 @@ def train_model(args):
                     all_targets.append(masks.cpu())
                     all_paths.extend(paths)
 
+            print(f"[DEBUG] Epoch {epoch+1}: Validation finished in {time.time() - start_val:.2f}s")
+
+            print(f"[DEBUG] Epoch {epoch+1}: Metrics calculation started at {time.strftime('%X')}")
+            start_metrics = time.time()
+
             preds = torch.cat(all_preds)
             targets = torch.cat(all_targets)
             metrics = calculate_metrics(preds, targets)
 
+            print(f"[DEBUG] Epoch {epoch+1}: Metrics calculation finished in {time.time() - start_metrics:.2f}s")
+
             writer.writerow([epoch + 1, metrics["IoU"], metrics["Precision"], metrics["Recall"], metrics["F1-Score"]])
+
+            print(f"[DEBUG] Epoch {epoch+1}: Writing metrics to file at {time.strftime('%X')}")
 
             with open(out_path / "metrics.txt", "w") as f:
                 for k, v in metrics.items():
                     f.write(f"{k}: {v:.4f}\n")
 
+            print(f"[DEBUG] Epoch {epoch+1}: Metrics written at {time.strftime('%X')}")
+
             if metrics["IoU"] > best_iou:
+                print(f"[DEBUG] Epoch {epoch+1}: Saving best model and outputs at {time.strftime('%X')}")
                 best_iou = metrics["IoU"]
                 best_preds, best_targets, best_paths = preds, targets, all_paths
                 torch.save(model.state_dict(), out_path / "model.pth")
+                print(f"[DEBUG] Epoch {epoch+1}: Best model saved at {time.strftime('%X')}")
 
+    print(f"[DEBUG] Saving example outputs at {time.strftime('%X')}")
     save_example_outputs(best_preds, best_targets, best_paths, out_path)
     print(f"[DONE] Best model saved to {out_path / 'model.pth'}")
 
