@@ -18,6 +18,7 @@ from tqdm import tqdm
 import random
 import csv
 from PIL import ImageDraw, ImageFont
+import time
 
 class_mapping = {
     'almohada': 0, 'arbol': 1, 'avion': 2, 'boomerang': 3,
