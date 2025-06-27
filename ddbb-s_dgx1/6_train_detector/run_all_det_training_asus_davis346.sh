@@ -11,7 +11,7 @@ for sensor in "asus" "davis346"; do
     base_gpu=${base_gpus[$sensor]}
     
     # Batch size fijo en 8 para ambos
-    batch_size=8
+    batch_size=16
 
     for scene in 0 1 2 3; do
         gpu=$((base_gpu + scene))
