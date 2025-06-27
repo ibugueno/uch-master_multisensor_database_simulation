@@ -11,3 +11,8 @@ PyYAML
 pillow
 scikit-learn
 segmentation-models-pytorch
+pycocotools
+collections
+pathlib
+json
+csv
