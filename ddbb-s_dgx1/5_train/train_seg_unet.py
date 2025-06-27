@@ -112,25 +112,40 @@ def annotate(image, label):
     return image
 
 def save_example_outputs(preds, targets, paths, out_path):
+    from collections import defaultdict
 
     out_dir = out_path / "examples"
     out_dir.mkdir(exist_ok=True)
 
-    for i, (pred, target, p) in enumerate(zip(preds, targets, paths)):
+    # Agrupar por orientación
+    orientation_groups = defaultdict(list)
+    for i, p in enumerate(paths):
         if EXAMPLE_OBJECT_PATH in str(p):
-            img = Image.open(p).convert("RGB")
-            pred_img = Image.fromarray((pred.squeeze().numpy() > 0.5).astype(np.uint8) * 255).convert("RGB")
-            target_img = Image.fromarray((target.squeeze().numpy()).astype(np.uint8) * 255).convert("RGB")
+            orientation_groups[EXAMPLE_OBJECT_PATH].append((i, p))
 
-            img = annotate(img, "Input")
-            pred_img = annotate(pred_img, "Predicted")
-            target_img = annotate(target_img, "Expected")
+    for orientation, samples in orientation_groups.items():
+        # Ordenar por nombre de archivo
+        samples_sorted = sorted(samples, key=lambda x: str(x[1]))
+        mid_index = len(samples_sorted) // 2
+        idx, p = samples_sorted[mid_index]
 
-            concatenated = Image.new("RGB", (img.width + pred_img.width + target_img.width, img.height))
-            concatenated.paste(img, (0, 0))
-            concatenated.paste(pred_img, (img.width, 0))
-            concatenated.paste(target_img, (img.width + pred_img.width, 0))
-            concatenated.save(out_dir / f"example_{i}.png")
+        pred = preds[idx]
+        target = targets[idx]
+
+        img = Image.open(p).convert("RGB")
+        pred_img = Image.fromarray((pred.squeeze().numpy() > 0.5).astype(np.uint8) * 255).convert("RGB")
+        target_img = Image.fromarray((target.squeeze().numpy()).astype(np.uint8) * 255).convert("RGB")
+
+        img = annotate(img, "Input")
+        pred_img = annotate(pred_img, "Predicted")
+        target_img = annotate(target_img, "Expected")
+
+        concatenated = Image.new("RGB", (img.width + pred_img.width + target_img.width, img.height))
+        concatenated.paste(img, (0, 0))
+        concatenated.paste(pred_img, (img.width, 0))
+        concatenated.paste(target_img, (img.width + pred_img.width, 0))
+        concatenated.save(out_dir / f"example_{orientation}.png")
+
 
 def set_seed(seed):
     torch.manual_seed(seed)
