@@ -324,7 +324,7 @@ def train_eval(model, train_loader, val_loader, device, args):
             mAP_50, mAP_95 = 0.0, 0.0
         else:
             coco_gt_obj = COCO(out_path / "coco_gt.json")
-            coco_dt_obj = coco_gt_obj.loadRes(out_path / "coco_dt.json")
+            coco_dt_obj = coco_gt_obj.loadRes(str(out_path / "coco_dt.json"))
 
             coco_eval = COCOeval(coco_gt_obj, coco_dt_obj, iouType='bbox')
             try:
