@@ -17,3 +17,4 @@ python train_det_fasterrcnn.py \
 
 
   df -h /dev/shm
+tmux ls | grep 'training_det_' | cut -d: -f1 | xargs -n1 tmux kill-session -t
