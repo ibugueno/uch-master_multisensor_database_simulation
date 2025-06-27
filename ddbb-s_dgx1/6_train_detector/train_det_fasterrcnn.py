@@ -217,9 +217,9 @@ def save_example_outputs(imgs, preds, targets, paths, out_path):
         concatenated.save(out_dir / f"example_{obj}_orientation_88_-6_-34.png")
 
 
+
 def train_eval(model, train_loader, val_loader, device, args):
     set_seed(args.seed)
-    
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     model.to(device)
 
@@ -237,7 +237,6 @@ def train_eval(model, train_loader, val_loader, device, args):
     best_map95 = 0
 
     for epoch in range(args.epochs):
-        # === Entrenamiento ===
         model.train()
         epoch_loss = 0.0
         for imgs, targets, paths in tqdm(train_loader, desc=f"Epoch {epoch+1} [Train]"):
@@ -254,11 +253,9 @@ def train_eval(model, train_loader, val_loader, device, args):
 
         print(f"[INFO] Epoch {epoch+1} Loss: {epoch_loss:.4f}")
 
-        # === Validación ===
         model.eval()
         coco_gt, coco_dt, coco_images = [], [], []
         annotation_id = 1
-
         all_imgs, all_preds, all_targets, all_paths = [], [], [], []
 
         with torch.no_grad():
@@ -269,7 +266,6 @@ def train_eval(model, train_loader, val_loader, device, args):
                 for t, o, img, path in zip(targets, outputs, imgs, paths_batch):
                     image_id = int(t["image_id"].item())
 
-                    # Ground Truth
                     for box, label in zip(t['boxes'], t['labels']):
                         xmin, ymin, xmax, ymax = box.cpu().numpy().tolist()
                         coco_gt.append({
@@ -282,7 +278,6 @@ def train_eval(model, train_loader, val_loader, device, args):
                         })
                         annotation_id += 1
 
-                    # Predictions
                     for box, score, label in zip(o['boxes'], o['scores'], o['labels']):
                         xmin, ymin, xmax, ymax = box.cpu().numpy().tolist()
                         coco_dt.append({
@@ -292,20 +287,17 @@ def train_eval(model, train_loader, val_loader, device, args):
                             "score": float(score)
                         })
 
-                    # Images
                     coco_images.append({
                         "id": image_id,
                         "width": img.shape[2],
                         "height": img.shape[1]
                     })
 
-                # Acumular ejemplos
                 all_imgs.extend([img.cpu() for img in imgs])
                 all_preds.extend(outputs)
                 all_targets.extend(targets)
                 all_paths.extend(paths_batch)
 
-        # COCO Evaluation
         coco_gt_dict = {
             "info": {"description": "Faster R-CNN evaluation"},
             "images": coco_images,
@@ -313,15 +305,13 @@ def train_eval(model, train_loader, val_loader, device, args):
             "categories": [{"id": v, "name": k} for k, v in CLASS_MAPPING.items()]
         }
 
-
         with open(out_path / "coco_gt.json", 'w') as f:
             json.dump(coco_gt_dict, f)
 
-        # Guardar coco_dt
         with open(out_path / "coco_dt.json", 'w') as f:
             json.dump(coco_dt, f)
 
-        # Verificar que sea lista
+        evaluated = False
         if not isinstance(coco_dt, list) or len(coco_dt) == 0:
             print("[WARNING] No detections to evaluate. Skipping COCO evaluation for this epoch.")
             mAP_50, mAP_95 = 0.0, 0.0
@@ -336,37 +326,38 @@ def train_eval(model, train_loader, val_loader, device, args):
                 coco_eval.summarize()
                 mAP_50 = coco_eval.stats[1]
                 mAP_95 = coco_eval.stats[0]
+                evaluated = True
             except Exception as e:
                 print(f"[WARNING] COCO evaluation failed: {e}")
                 mAP_50, mAP_95 = 0.0, 0.0
 
-
-        # Guardar en metrics.csv
         with open(metrics_csv, 'a', newline='') as f:
             writer = csv.writer(f)
             writer.writerow([epoch+1, epoch_loss, mAP_50, mAP_95])
 
-        # Guardar en metrics.txt
         with open(out_path / "metrics.txt", 'w') as f:
             f.write(f"Epoch {epoch+1}\n")
             f.write(f"Train Loss: {epoch_loss:.4f}\n")
             f.write(f"mAP@50: {mAP_50:.4f}\n")
             f.write(f"mAP@95: {mAP_95:.4f}\n\n")
 
-            precisions = coco_eval.eval['precision']
-            for idx, cat in enumerate(CLASS_MAPPING.keys()):
-                precision_cat = precisions[:, idx, 0, 0, -1]
-                precision_cat = precision_cat[precision_cat > -1]
-                ap_cat = np.mean(precision_cat) if len(precision_cat) else float('nan')
-                f.write(f"{cat}: AP={ap_cat:.4f}\n")
+            if evaluated:
+                precisions = coco_eval.eval['precision']
+                for idx, cat in enumerate(CLASS_MAPPING.keys()):
+                    precision_cat = precisions[:, idx, 0, 0, -1]
+                    precision_cat = precision_cat[precision_cat > -1]
+                    ap_cat = np.mean(precision_cat) if len(precision_cat) else float('nan')
+                    f.write(f"{cat}: AP={ap_cat:.4f}\n")
+            else:
+                f.write("[WARNING] No per-class AP available (no detections).\n")
 
-        # Guardar mejor modelo y ejemplos
         if mAP_95 > best_map95:
             best_map95 = mAP_95
             torch.save(model.state_dict(), out_path / "fasterrcnn_model.pth")
             save_example_outputs(all_imgs, all_preds, all_targets, all_paths, out_path)
 
     print(f"[DONE] Best model saved to {out_path / 'fasterrcnn_model.pth'}")
+
 
 
 if __name__ == "__main__":
