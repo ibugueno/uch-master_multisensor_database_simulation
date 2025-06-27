@@ -211,6 +211,11 @@ def train_model(args):
             iou_objs, iou_bgs = [], []
             per_object = defaultdict(lambda: {"iou_obj": [], "iou_bg": []})
 
+            # === NUEVO: acumuladores globales ===
+            all_preds = []
+            all_masks = []
+            all_paths = []
+
             with torch.no_grad():
                 for imgs, masks, paths in tqdm(val_loader, desc=f"Epoch {epoch+1} [Val]"):
                     imgs, masks = imgs.to(device), masks.to(device)
@@ -225,6 +230,11 @@ def train_model(args):
                         obj = str(path).split("/")[-3]
                         per_object[obj]["iou_obj"].append(iou_obj[i].item())
                         per_object[obj]["iou_bg"].append(iou_bg[i].item())
+
+                    # === acumular para ejemplos ===
+                    all_preds.append(preds.cpu())
+                    all_masks.append(masks.cpu())
+                    all_paths.extend(paths)
 
             mean_iou_obj = np.mean(iou_objs)
             mean_iou_bg = np.mean(iou_bgs)
@@ -248,9 +258,14 @@ def train_model(args):
             if mean_iou > best_mean_iou:
                 best_mean_iou = mean_iou
                 torch.save(model.state_dict(), out_path / "best_model.pth")
-                save_example_outputs(preds, masks, paths, out_path)
+
+                # === concatenar y guardar ejemplos ===
+                all_preds_cat = torch.cat(all_preds, dim=0)
+                all_masks_cat = torch.cat(all_masks, dim=0)
+                save_example_outputs(all_preds_cat, all_masks_cat, all_paths, out_path)
 
     print(f"[DONE] Best model saved at {out_path / 'best_model.pth'}")
+
 
 
 if __name__ == "__main__":
