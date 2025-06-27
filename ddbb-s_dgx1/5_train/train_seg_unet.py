@@ -185,12 +185,12 @@ def train_model(args):
                     preds = torch.sigmoid(outputs) > 0.5
 
                     dices.append(dice_score(preds, masks))
-                    ious.append(((preds & masks).sum().item()) / ((preds | masks).sum().item() + 1e-6))
+                    ious.append(((preds.bool() & masks.bool()).sum().item()) / ((preds.bool() | masks.bool()).sum().item() + 1e-6))
                     accs.append(weighted_pixel_acc(preds, masks))
                     for i, path in enumerate(paths):
                         obj = str(path).split("/")[-3]
                         per_object[obj]["dice"].append(dice_score(preds[i:i+1], masks[i:i+1]))
-                        per_object[obj]["iou"].append(((preds[i] & masks[i]).sum().item()) / ((preds[i] | masks[i]).sum().item() + 1e-6))
+                        per_object[obj]["iou"].append(((preds[i].bool() & masks[i].bool()).sum().item()) / ((preds[i].bool() | masks[i].bool()).sum().item() + 1e-6))
                         per_object[obj]["acc"].append(weighted_pixel_acc(preds[i], masks[i]))
 
                 save_example_outputs(preds, masks, paths, out_path)
