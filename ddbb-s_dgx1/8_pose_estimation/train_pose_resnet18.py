@@ -130,7 +130,8 @@ class PoseDataset(Dataset):
         if obj_class not in CLASS_MAPPING:
             raise ValueError(f"[ERROR] Object class '{obj_class}' not found in CLASS_MAPPING. Path: {img_path}")
 
-        return img_tensor, z, quat, os.path.basename(img_path)
+        return img_tensor, z, quat, img_path
+
 
 
 class PoseResNet18(nn.Module):
