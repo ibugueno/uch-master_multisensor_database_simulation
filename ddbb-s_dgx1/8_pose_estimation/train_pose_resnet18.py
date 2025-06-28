@@ -206,6 +206,16 @@ def save_pose_example_outputs_pose(imgs, quat_preds, quat_gts, img_names, out_pa
 
         save_pose_example_outputs(img_tensor, quat_pred, quat_gt, out_dir, img_name)
 
+def quaternion_angle_error(q_pred, q_gt):
+    q_pred = q_pred / q_pred.norm(dim=-1, keepdim=True)
+    q_gt = q_gt / q_gt.norm(dim=-1, keepdim=True)
+    dot = torch.abs(torch.sum(q_pred * q_gt, dim=-1))
+    dot = torch.clamp(dot, -1.0, 1.0)
+    angle = 2 * torch.acos(dot) * (180.0 / np.pi)
+    return angle
+
+
+
 
 def train_eval(args, model, device, train_loader, val_loader):
     os.makedirs(args.output_dir, exist_ok=True)
@@ -221,17 +231,21 @@ def train_eval(args, model, device, train_loader, val_loader):
     with open(csv_log_path, 'w', newline='') as csvfile:
         writer = csv.writer(csvfile)
         writer.writerow(['epoch', 'train_total_loss', 'train_z_loss', 'train_q_loss',
-                         'val_total_loss', 'val_z_loss', 'val_q_loss'])
+                         'val_total_loss', 'val_z_loss', 'val_q_loss',
+                         'train_mae_z', 'train_q_mse', 'train_q_angle',
+                         'val_mae_z', 'val_q_mse', 'val_q_angle'])
 
         for epoch in range(args.epochs):
-            # Entrenamiento
             model.train()
             train_total_loss, train_z_loss, train_q_loss = 0, 0, 0
+            train_mae_z, train_q_mse, train_q_angle = 0, 0, 0
+
             for images, z, quat, _ in tqdm(train_loader, desc=f"Epoch {epoch+1} [Train]"):
                 images, z, quat = images.to(device), z.to(device), quat.to(device)
                 optimizer.zero_grad()
                 outputs = model(images)
                 z_pred, quat_pred = outputs[:,0], outputs[:,1:]
+
                 z_loss = criterion(z_pred, z.squeeze())
                 q_loss = criterion(quat_pred, quat)
                 loss = z_loss + q_loss
@@ -242,18 +256,25 @@ def train_eval(args, model, device, train_loader, val_loader):
                 train_z_loss += z_loss.item()
                 train_q_loss += q_loss.item()
 
+                train_mae_z += torch.mean(torch.abs(z_pred - z.squeeze())).item()
+                train_q_mse += torch.mean((quat_pred - quat)**2).item()
+                train_q_angle += torch.mean(quaternion_angle_error(quat_pred, quat)).item()
+
             n_train = len(train_loader)
             tl, zl, ql = train_total_loss/n_train, train_z_loss/n_train, train_q_loss/n_train
+            mae_z_epoch = train_mae_z / n_train
+            q_mse_epoch = train_q_mse / n_train
+            q_angle_epoch = train_q_angle / n_train
 
-            # Validación
             model.eval()
             val_total_loss, val_z_loss, val_q_loss = 0, 0, 0
+            val_mae_z, val_q_mse, val_q_angle = 0, 0, 0
             val_log_path = os.path.join(out_path, f'val_epoch{epoch+1}.csv')
 
             images_all, quat_preds_all, quat_gts_all, img_names_all = [], [], [], []
 
             with open(val_log_path, 'w', newline='') as valcsv:
-                val_writer = csv.DictWriter(valcsv, fieldnames=['image', 'z_loss', 'q_loss', 'total_loss'])
+                val_writer = csv.DictWriter(valcsv, fieldnames=['image', 'z_loss', 'q_loss', 'total_loss', 'z_mae', 'q_mse', 'q_angle_deg'])
                 val_writer.writeheader()
 
                 with torch.no_grad():
@@ -261,40 +282,52 @@ def train_eval(args, model, device, train_loader, val_loader):
                         images, z, quat = images.to(device), z.to(device), quat.to(device)
                         outputs = model(images)
                         z_pred, quat_pred = outputs[:,0], outputs[:,1:]
-                        z_loss = criterion(z_pred, z.squeeze())
-                        q_loss = criterion(quat_pred, quat)
-                        loss = z_loss + q_loss
 
-                        val_total_loss += loss.item()
-                        val_z_loss += z_loss.item()
-                        val_q_loss += q_loss.item()
+                        z_loss_each = (z_pred - z.squeeze()).pow(2)
+                        q_loss_each = (quat_pred - quat).pow(2).mean(dim=1)
+                        loss_each = z_loss_each + q_loss_each
+
+                        z_mae_each = torch.abs(z_pred - z.squeeze())
+                        q_mse_each = (quat_pred - quat).pow(2).mean(dim=1)
+                        q_angle_each = quaternion_angle_error(quat_pred, quat)
+
+                        val_total_loss += loss_each.mean().item()
+                        val_z_loss += z_loss_each.mean().item()
+                        val_q_loss += q_loss_each.mean().item()
+                        val_mae_z += z_mae_each.mean().item()
+                        val_q_mse += q_mse_each.mean().item()
+                        val_q_angle += q_angle_each.mean().item()
+
+                        for i in range(len(img_names)):
+                            val_writer.writerow({
+                                'image': img_names[i],
+                                'z_loss': z_loss_each[i].item(),
+                                'q_loss': q_loss_each[i].item(),
+                                'total_loss': loss_each[i].item(),
+                                'z_mae': z_mae_each[i].item(),
+                                'q_mse': q_mse_each[i].item(),
+                                'q_angle_deg': q_angle_each[i].item()
+                            })
 
                         images_all.extend(images.cpu())
                         quat_preds_all.extend(quat_pred.cpu())
                         quat_gts_all.extend(quat.cpu())
                         img_names_all.extend(img_names)
 
-                        for i in range(len(img_names)):
-                            val_writer.writerow({
-                                'image': img_names[i],
-                                'z_loss': z_loss.item(),
-                                'q_loss': q_loss.item(),
-                                'total_loss': loss.item()
-                            })
-
             n_val = len(val_loader)
             vl, vzl, vql = val_total_loss/n_val, val_z_loss/n_val, val_q_loss/n_val
+            val_mae_z_epoch = val_mae_z / n_val
+            val_q_mse_epoch = val_q_mse / n_val
+            val_q_angle_epoch = val_q_angle / n_val
 
-            # Guardar métricas
-            writer.writerow([epoch+1, tl, zl, ql, vl, vzl, vql])
-            print(f"[INFO] Epoch {epoch+1} Train Loss: {tl:.4f} | Val Loss: {vl:.4f}")
+            writer.writerow([epoch+1, tl, zl, ql, vl, vzl, vql,
+                             mae_z_epoch, q_mse_epoch, q_angle_epoch,
+                             val_mae_z_epoch, val_q_mse_epoch, val_q_angle_epoch])
 
-            # Guardar ejemplo por objeto
-            save_pose_example_outputs_pose(
-                images_all, quat_preds_all, quat_gts_all, img_names_all, out_path, args.scene
-            )
+            print(f"[INFO] Epoch {epoch+1} | Train Loss: {tl:.4f}, MAE_z: {mae_z_epoch:.2f}cm, Q_ang: {q_angle_epoch:.1f}deg | Val Loss: {vl:.4f}, MAE_z: {val_mae_z_epoch:.2f}cm, Q_ang: {val_q_angle_epoch:.1f}deg")
 
-            # Guardar modelo
+            save_pose_example_outputs_pose(images_all, quat_preds_all, quat_gts_all, img_names_all, out_path, args.scene)
+
             torch.save(model.state_dict(), os.path.join(out_path, f'model_epoch{epoch+1}.pth'))
 
 
