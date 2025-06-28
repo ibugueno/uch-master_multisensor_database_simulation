@@ -11,9 +11,12 @@ def process_pose6d_and_bbox(pose6d_file, bbox_file, dst_file):
         reader = csv.reader(f)
         header_pose = next(reader)
         row_pose = next(reader)
-        # Asumimos estructura [depth_cm, qx, qy, qz, qw]
-        depth_cm = float(row_pose[0])
-        qx, qy, qz, qw = map(float, row_pose[1:5])
+        # Estructura: x_px,y_px,z_cm,qw,qx,qy,qz
+        depth_cm = float(row_pose[2])
+        qw = float(row_pose[3])
+        qx = float(row_pose[4])
+        qy = float(row_pose[5])
+        qz = float(row_pose[6])
 
     # Leer bbox (xmin, ymin, xmax, ymax)
     with open(bbox_file) as f:
@@ -33,6 +36,7 @@ def process_pose6d_and_bbox(pose6d_file, bbox_file, dst_file):
             writer = csv.writer(f)
             writer.writerow(["xmin", "ymin", "xmax", "ymax", "depth_cm", "qx", "qy", "qz", "qw"])
             writer.writerow(combined_row)
+
 
 def process_sensor(sensor):
     pose6d_abs_path = BASE_PATH / sensor / "pose6d-abs"
