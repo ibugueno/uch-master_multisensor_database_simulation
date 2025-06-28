@@ -88,6 +88,10 @@ class PoseDataset(Dataset):
         self.image_paths = image_paths
         self.label_paths = label_paths
         self.sensor = sensor
+        self.transform = transforms.Compose([
+            transforms.Resize((224, 224)),  # fixed input size for ResNet18
+            transforms.ToTensor()
+        ])
 
     def __len__(self):
         return len(self.image_paths)
@@ -95,10 +99,8 @@ class PoseDataset(Dataset):
     def __getitem__(self, idx):
         img_path = self.image_paths[idx]
         img = Image.open(img_path).convert('RGB')
-
         orig_w, orig_h = img.size
 
-        # === Resize si es evk4 ===
         if 'evk4' in img_path:
             resized_h, resized_w = SENSOR_SHAPES['evk4'][0] // 2, SENSOR_SHAPES['evk4'][1] // 2
             img = img.resize((resized_w, resized_h), Image.BILINEAR)
@@ -107,13 +109,11 @@ class PoseDataset(Dataset):
         else:
             scale_x = scale_y = 1.0
 
-        # === Leer label ===
         label_path = self.label_paths[idx]
         with open(label_path) as f:
             lines = f.readlines()[1]
             data = [float(x) for x in lines.strip().split(',')]
             xmin, ymin, xmax, ymax = map(float, data[:4])
-            # aplicar escala si es evk4
             xmin *= scale_x
             xmax *= scale_x
             ymin *= scale_y
@@ -121,14 +121,11 @@ class PoseDataset(Dataset):
             depth_cm = data[4]
             quat = torch.tensor(data[5:], dtype=torch.float32)
 
-        # Recortar imagen
         img_cropped = img.crop((int(xmin), int(ymin), int(xmax), int(ymax)))
-        img_tensor = transforms.ToTensor()(img_cropped)
+        img_tensor = self.transform(img_cropped)  # apply fixed resize + ToTensor
 
-        # Convertir depth a tensor
         z = torch.tensor([depth_cm], dtype=torch.float32)
 
-        # Clase desde carpeta padre (si lo necesitas)
         obj_class = os.path.basename(os.path.dirname(os.path.dirname(img_path)))
         if obj_class not in CLASS_MAPPING:
             raise ValueError(f"[ERROR] Object class '{obj_class}' not found in CLASS_MAPPING. Path: {img_path}")
