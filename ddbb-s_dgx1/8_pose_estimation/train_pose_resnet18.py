@@ -8,9 +8,54 @@ import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms, models
-from PIL import Image
 from tqdm import tqdm
 import csv
+import numpy as np
+from PIL import Image, ImageDraw
+from scipy.spatial.transform import Rotation as R
+from collections import defaultdict
+from pathlib import Path
+
+
+
+SENSOR_SHAPES = {
+    "asus": (360, 640),
+    "davis346": (260, 346),
+    "evk4": (720, 1280)
+}
+
+VAL_ORIENTATIONS = [
+    "orientation_39_17_-102",
+    "orientation_19_31_21",
+    "orientation_-125_66_-116",
+    "orientation_88_-6_-34"
+]
+
+CLASS_MAPPING = {
+    'almohada': 1,
+    'arbol': 2,
+    'avion': 3,
+    'boomerang': 4,
+    'caja_amarilla': 5,
+    'caja_azul': 6,
+    'carro_rojo': 7,
+    'clorox': 8,
+    'dino': 9,
+    'jarron': 10,
+    'lysoform': 11,
+    'mobil': 12,
+    'paleta': 13,
+    'pelota': 14,
+    'sombrero': 15,
+    'tarro': 16,
+    'zapatilla': 17
+}
+
+def set_seed(seed):
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    random.seed(seed)
+    torch.cuda.manual_seed_all(seed)
 
 def load_paths(data_txt, label_txt):
     with open(data_txt) as f:
@@ -19,28 +64,77 @@ def load_paths(data_txt, label_txt):
         label_paths = [line.strip() for line in f]
     return image_paths, label_paths
 
+def get_datasets(sensor, input_dir, scene):
+    data_txt = os.path.join(input_dir, f"{sensor}_data_scene_{scene}.txt")
+    label_txt = os.path.join(input_dir, f"{sensor}_pose6d-abs-10ms_scene_{scene}.txt")
+    img_paths, label_paths = load_paths(data_txt, label_txt)
+
+    train_imgs, train_lbls, val_imgs, val_lbls = [], [], [], []
+    for img, lbl in zip(img_paths, label_paths):
+        if any(orient in img for orient in VAL_ORIENTATIONS):
+            val_imgs.append(img)
+            val_lbls.append(lbl)
+        else:
+            train_imgs.append(img)
+            train_lbls.append(lbl)
+
+    train_dataset = PoseDataset(train_imgs, train_lbls, sensor)
+    val_dataset = PoseDataset(val_imgs, val_lbls, sensor)
+    return train_dataset, val_dataset
+
+
 class PoseDataset(Dataset):
-    def __init__(self, input_dir, sensor, scene):
-        data_txt = os.path.join(input_dir, f"{sensor}_data_scene_{scene}.txt")
-        label_txt = os.path.join(input_dir, f"{sensor}_pose6d-abs_scene_{scene}.txt")
-        self.image_paths, self.label_paths = load_paths(data_txt, label_txt)
-        self.transforms = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        ])
+    def __init__(self, image_paths, label_paths, sensor):
+        self.image_paths = image_paths
+        self.label_paths = label_paths
+        self.sensor = sensor
 
     def __len__(self):
         return len(self.image_paths)
 
     def __getitem__(self, idx):
-        img = Image.open(self.image_paths[idx]).convert('RGB')
-        img = self.transforms(img)
-        with open(self.label_paths[idx]) as f:
+        img_path = self.image_paths[idx]
+        img = Image.open(img_path).convert('RGB')
+
+        orig_w, orig_h = img.size
+
+        # === Resize si es evk4 ===
+        if 'evk4' in img_path:
+            resized_h, resized_w = SENSOR_SHAPES['evk4'][0] // 2, SENSOR_SHAPES['evk4'][1] // 2
+            img = img.resize((resized_w, resized_h), Image.BILINEAR)
+            scale_x = resized_w / orig_w
+            scale_y = resized_h / orig_h
+        else:
+            scale_x = scale_y = 1.0
+
+        # === Leer label ===
+        label_path = self.label_paths[idx]
+        with open(label_path) as f:
             lines = f.readlines()[1]
-            data = [float(x) for x in lines.strip().split(',')[2:]]
-            z = torch.tensor([data[0]], dtype=torch.float32)
-            quat = torch.tensor(data[1:], dtype=torch.float32)
-        return img, z, quat, os.path.basename(self.image_paths[idx])
+            data = [float(x) for x in lines.strip().split(',')]
+            xmin, ymin, xmax, ymax = map(float, data[:4])
+            # aplicar escala si es evk4
+            xmin *= scale_x
+            xmax *= scale_x
+            ymin *= scale_y
+            ymax *= scale_y
+            depth_cm = data[4]
+            quat = torch.tensor(data[5:], dtype=torch.float32)
+
+        # Recortar imagen
+        img_cropped = img.crop((int(xmin), int(ymin), int(xmax), int(ymax)))
+        img_tensor = transforms.ToTensor()(img_cropped)
+
+        # Convertir depth a tensor
+        z = torch.tensor([depth_cm], dtype=torch.float32)
+
+        # Clase desde carpeta padre (si lo necesitas)
+        obj_class = os.path.basename(os.path.dirname(os.path.dirname(img_path)))
+        if obj_class not in CLASS_MAPPING:
+            raise ValueError(f"[ERROR] Object class '{obj_class}' not found in CLASS_MAPPING. Path: {img_path}")
+
+        return img_tensor, z, quat, os.path.basename(img_path)
+
 
 class PoseResNet18(nn.Module):
     def __init__(self):
@@ -51,86 +145,191 @@ class PoseResNet18(nn.Module):
     def forward(self, x):
         return self.backbone(x)
 
-def train_one_epoch(model, loader, optimizer, criterion, device):
-    model.train()
-    total_loss, total_z_loss, total_q_loss = 0, 0, 0
-    for images, z, quat, _ in tqdm(loader, desc='Train'):
-        images, z, quat = images.to(device), z.to(device), quat.to(device)
-        optimizer.zero_grad()
-        outputs = model(images)
-        z_pred, quat_pred = outputs[:,0], outputs[:,1:]
-        z_loss = criterion(z_pred, z.squeeze())
-        q_loss = criterion(quat_pred, quat)
-        loss = z_loss + q_loss
-        loss.backward()
-        optimizer.step()
-        total_loss += loss.item()
-        total_z_loss += z_loss.item()
-        total_q_loss += q_loss.item()
-    n = len(loader)
-    return total_loss/n, total_z_loss/n, total_q_loss/n
+def draw_pose_axes(img, quat, bbox=None, color_x=(255,0,0), color_y=(0,255,0), color_z=(0,0,255), length=40):
+    """
+    Dibuja sistema de coordenadas x,y,z en el centro de la imagen recortada, orientado por quaternion.
+    Si se pasa bbox=(xmin,ymin,xmax,ymax), dibuja en centro del bbox en img original.
+    """
+    img_draw = img.copy()
+    draw = ImageDraw.Draw(img_draw)
 
-def validate(model, loader, criterion, device, log_writer):
-    model.eval()
-    total_loss, total_z_loss, total_q_loss = 0, 0, 0
-    with torch.no_grad():
-        for images, z, quat, img_names in tqdm(loader, desc='Val'):
-            images, z, quat = images.to(device), z.to(device), quat.to(device)
-            outputs = model(images)
-            z_pred, quat_pred = outputs[:,0], outputs[:,1:]
-            z_loss = criterion(z_pred, z.squeeze())
-            q_loss = criterion(quat_pred, quat)
-            loss = z_loss + q_loss
-            total_loss += loss.item()
-            total_z_loss += z_loss.item()
-            total_q_loss += q_loss.item()
-            for i in range(len(img_names)):
-                log_writer.writerow({'image': img_names[i], 'z_loss': z_loss.item(), 'q_loss': q_loss.item(), 'total_loss': loss.item()})
-    n = len(loader)
-    return total_loss/n, total_z_loss/n, total_q_loss/n
+    if bbox is not None:
+        cx = (bbox[0]+bbox[2])/2
+        cy = (bbox[1]+bbox[3])/2
+    else:
+        w,h = img.size
+        cx, cy = w//2, h//2
 
-def main(args):
+    rot = R.from_quat(quat.cpu().numpy())
+    axes = rot.apply(np.eye(3))
+
+    for axis, color in zip(axes, [color_x, color_y, color_z]):
+        end_x = cx + axis[0] * length
+        end_y = cy - axis[1] * length  # Y invertido imagen
+        draw.line([(cx, cy), (end_x, end_y)], fill=color, width=3)
+
+    return img_draw
+
+
+def save_pose_example_outputs_pose(imgs, quat_preds, quat_gts, img_names, out_path):
+    """
+    Guarda un ejemplo por objeto para orientation_88_-6_-34:
+    imagen original, predicha con ejes XYZ, ground truth con ejes XYZ.
+    Selecciona index 60% de las muestras ordenadas por nombre.
+    """
+    out_dir = Path(out_path) / "examples"
+    out_dir.mkdir(exist_ok=True)
+
+    orientation_objects = defaultdict(list)
+
+    # === Agrupar indices por objeto ===
+    for i, name in enumerate(img_names):
+        if "orientation_88_-6_-34" in name:
+            obj = name.split("/")[-3]
+            orientation_objects[obj].append((i, name))
+
+    # === Procesar cada objeto ===
+    for obj in sorted(orientation_objects.keys()):
+        entries = orientation_objects[obj]
+        sorted_entries = sorted(entries, key=lambda x: os.path.basename(x[1]))
+
+        indices_sorted = [i for i, _ in sorted_entries]
+        if not indices_sorted:
+            continue
+
+        # Seleccionar index 60% o mitad
+        idx = indices_sorted[int(0.6 * len(indices_sorted))] if len(indices_sorted) >= 2 else indices_sorted[0]
+
+        img_tensor = imgs[idx].cpu()
+        quat_pred = quat_preds[idx].cpu()
+        quat_gt = quat_gts[idx].cpu()
+        img_name = os.path.basename(img_names[idx])
+
+        # === Guardar imagen concatenada ===
+        save_pose_example_outputs(img_tensor, quat_pred, quat_gt, out_dir, img_name)
+
+
+def train_eval(args, model, device, train_loader, val_loader):
     os.makedirs(args.output_dir, exist_ok=True)
-    dataset = PoseDataset(args.input_dir, args.sensor, args.scene)
-    loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True)
-    model = PoseResNet18().to(args.device)
+    set_seed(args.seed)
+
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     criterion = nn.MSELoss()
 
-    csv_log_path = os.path.join(args.output_dir, 'epoch_log.csv')
+    # === Crear carpeta y logs ===
+    out_path = os.path.join(args.output_dir, f"{args.sensor}_scene_{args.scene}")
+    os.makedirs(out_path, exist_ok=True)
+
+    csv_log_path = os.path.join(out_path, 'metrics.csv')
     with open(csv_log_path, 'w', newline='') as csvfile:
-        fieldnames = ['epoch', 'phase', 'total_loss', 'z_loss', 'q_loss']
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-        writer.writeheader()
+        writer = csv.writer(csvfile)
+        writer.writerow(['epoch', 'train_total_loss', 'train_z_loss', 'train_q_loss',
+                         'val_total_loss', 'val_z_loss', 'val_q_loss'])
 
         for epoch in range(args.epochs):
-            tl, zl, ql = train_one_epoch(model, loader, optimizer, criterion, args.device)
-            writer.writerow({'epoch': epoch+1, 'phase': 'train', 'total_loss': tl, 'z_loss': zl, 'q_loss': ql})
+            # === Entrenamiento ===
+            model.train()
+            train_total_loss, train_z_loss, train_q_loss = 0, 0, 0
+            for images, z, quat, _ in tqdm(train_loader, desc=f"Epoch {epoch+1} [Train]"):
+                images, z, quat = images.to(device), z.to(device), quat.to(device)
+                optimizer.zero_grad()
+                outputs = model(images)
+                z_pred, quat_pred = outputs[:,0], outputs[:,1:]
+                z_loss = criterion(z_pred, z.squeeze())
+                q_loss = criterion(quat_pred, quat)
+                loss = z_loss + q_loss
+                loss.backward()
+                optimizer.step()
 
-            val_log_path = os.path.join(args.output_dir, f'val_epoch{epoch+1}.csv')
+                train_total_loss += loss.item()
+                train_z_loss += z_loss.item()
+                train_q_loss += q_loss.item()
+
+            n_train = len(train_loader)
+            tl, zl, ql = train_total_loss/n_train, train_z_loss/n_train, train_q_loss/n_train
+
+            # === Validación ===
+            model.eval()
+            val_total_loss, val_z_loss, val_q_loss = 0, 0, 0
+            val_log_path = os.path.join(out_path, f'val_epoch{epoch+1}.csv')
             with open(val_log_path, 'w', newline='') as valcsv:
                 val_writer = csv.DictWriter(valcsv, fieldnames=['image', 'z_loss', 'q_loss', 'total_loss'])
                 val_writer.writeheader()
-                vl, vzl, vql = validate(model, loader, criterion, args.device, val_writer)
-            writer.writerow({'epoch': epoch+1, 'phase': 'val', 'total_loss': vl, 'z_loss': vzl, 'q_loss': vql})
 
-            torch.save(model.state_dict(), os.path.join(args.output_dir, f'model_epoch{epoch+1}.pth'))
 
-def parse_args():
+                with torch.no_grad():
+                    for images, z, quat, img_names in tqdm(val_loader, desc=f"Epoch {epoch+1} [Val]"):
+                        images, z, quat = images.to(device), z.to(device), quat.to(device)
+                        outputs = model(images)
+                        z_pred, quat_pred = outputs[:,0], outputs[:,1:]
+                        z_loss = criterion(z_pred, z.squeeze())
+                        q_loss = criterion(quat_pred, quat)
+                        loss = z_loss + q_loss
+
+                        val_total_loss += loss.item()
+                        val_z_loss += z_loss.item()
+                        val_q_loss += q_loss.item()
+
+                        for i in range(len(img_names)):
+                            val_writer.writerow({
+                                'image': img_names[i],
+                                'z_loss': z_loss.item(),
+                                'q_loss': q_loss.item(),
+                                'total_loss': loss.item()
+                            })
+
+                            # === Guardar ejemplo con ejes XYZ ===
+                            save_pose_example_outputs(
+                                images[i].cpu(),
+                                quat_pred[i].cpu(),
+                                quat[i].cpu(),
+                                os.path.join(out_path, "examples"),
+                                img_names[i]
+                            )
+
+
+            n_val = len(val_loader)
+            vl, vzl, vql = val_total_loss/n_val, val_z_loss/n_val, val_q_loss/n_val
+
+            # === Guardar métricas ===
+            writer.writerow([epoch+1, tl, zl, ql, vl, vzl, vql])
+            print(f"[INFO] Epoch {epoch+1} Train Loss: {tl:.4f} | Val Loss: {vl:.4f}")
+
+            # === Guardar modelo ===
+            torch.save(model.state_dict(), os.path.join(out_path, f'model_epoch{epoch+1}.pth'))
+
+
+
+if __name__ == "__main__":
+
     parser = argparse.ArgumentParser()
+    parser.add_argument('--sensor', required=True, choices=["asus", "davis346", "evk4"])
+    parser.add_argument('--scene', required=True, type=int, choices=[0,1,2,3])
     parser.add_argument('--input_dir', required=True)
-    parser.add_argument('--sensor', required=True)
-    parser.add_argument('--scene', type=int, required=True)
+    parser.add_argument('--output_dir', required=True)
     parser.add_argument('--epochs', type=int, default=20)
     parser.add_argument('--batch_size', type=int, default=16)
     parser.add_argument('--lr', type=float, default=1e-4)
-    parser.add_argument('--output_dir', required=True)
-    parser.add_argument('--device', default='cuda')
-    return parser.parse_args()
+    parser.add_argument('--gpu', type=int, default=0, help="GPU index to use (default: 0)")
+    parser.add_argument('--seed', type=int, default=42)
+    args = parser.parse_args()
 
-if __name__ == '__main__':
-    args = parse_args()
-    main(args)
+    # === Dataset y DataLoader ===
+    train_dataset, val_dataset = get_datasets(args.sensor, args.input_dir, args.scene)
 
-"""
-✅ Script completo y ordenado con parse_args, main(args), dataset modular, entrenamiento y validación listos.
+    train_loader = DataLoader(
+        train_dataset, batch_size=args.batch_size, shuffle=True
+    )
+    val_loader = DataLoader(
+        val_dataset, batch_size=args.batch_size, shuffle=False
+    )
+
+    # === Modelo y device ===
+    device = torch.device(f"cuda:{args.gpu}" if torch.cuda.is_available() else "cpu")
+    model = PoseResNet18().to(device)
+
+    train_eval(args, model, device, train_loader, val_loader)
+
+
+
+
