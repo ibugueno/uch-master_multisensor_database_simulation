@@ -221,8 +221,6 @@ def quaternion_to_euler_deg(quat):
 
 
 
-
-
 def train_eval(args, model, device, train_loader, val_loader):
     os.makedirs(args.output_dir, exist_ok=True)
     set_seed(args.seed)
@@ -244,8 +242,8 @@ def train_eval(args, model, device, train_loader, val_loader):
 
         for epoch in range(args.epochs):
             model.train()
-            train_total_loss, train_z_loss, train_q_loss = 0, 0, 0
-            train_mae_z, train_q_mse, train_q_angle = 0, 0, 0
+            train_total_loss = train_z_loss = train_q_loss = 0
+            train_mae_z = train_q_mse = train_q_angle = 0
 
             for images, z, quat, _ in tqdm(train_loader, desc=f"Epoch {epoch+1} [Train]"):
                 images, z, quat = images.to(device), z.to(device), quat.to(device)
@@ -274,9 +272,11 @@ def train_eval(args, model, device, train_loader, val_loader):
             q_angle_epoch = train_q_angle / n_train
 
             model.eval()
-            val_total_loss, val_z_loss, val_q_loss = 0, 0, 0
-            val_mae_z, val_q_mse, val_q_angle = 0, 0, 0
-            val_roll_error, val_pitch_error, val_yaw_error = 0, 0, 0
+            val_total_loss = val_z_loss = val_q_loss = 0
+            val_mae_z = val_q_mse = val_q_angle = 0
+            val_roll_error = val_pitch_error = val_yaw_error = 0
+
+            images_all, quat_preds_all, quat_gts_all, img_names_all = [], [], [], []
 
             with torch.no_grad():
                 for images, z, quat, img_names in tqdm(val_loader, desc=f"Epoch {epoch+1} [Val]"):
@@ -306,6 +306,11 @@ def train_eval(args, model, device, train_loader, val_loader):
                     val_pitch_error += euler_error_each[:,1].mean().item()
                     val_yaw_error += euler_error_each[:,2].mean().item()
 
+                    images_all.extend(images.cpu())
+                    quat_preds_all.extend(quat_pred.cpu())
+                    quat_gts_all.extend(quat.cpu())
+                    img_names_all.extend(img_names)
+
             n_val = len(val_loader)
             vl, vzl, vql = val_total_loss/n_val, val_z_loss/n_val, val_q_loss/n_val
             val_mae_z_epoch = val_mae_z / n_val
@@ -323,7 +328,6 @@ def train_eval(args, model, device, train_loader, val_loader):
             print(f"[INFO] Epoch {epoch+1} | Train Loss: {tl:.4f}, Val Loss: {vl:.4f}, MAE_z: {val_mae_z_epoch:.2f}cm, Roll: {val_roll_error_epoch:.1f}, Pitch: {val_pitch_error_epoch:.1f}, Yaw: {val_yaw_error_epoch:.1f}")
 
             save_pose_example_outputs_pose(images_all, quat_preds_all, quat_gts_all, img_names_all, out_path, args.scene)
-
             torch.save(model.state_dict(), os.path.join(out_path, f'model_epoch{epoch+1}.pth'))
 
 
