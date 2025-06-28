@@ -3,7 +3,7 @@
 SCRIPT_PATH="eval_fasterrcnn_detection_metrics.py"
 INPUT_DIR="/app/input/dataloader/"
 OUTPUT_DIR="/app/output/recognition/"
-MODEL_DIR="l"
+MODEL_DIR="/app/output/det/"
 
 declare -A base_gpus
 base_gpus=(["asus"]=0 ["davis346"]=4)
