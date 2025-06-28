@@ -15,7 +15,7 @@ from PIL import Image, ImageDraw
 from scipy.spatial.transform import Rotation as R
 from collections import defaultdict
 from pathlib import Path
-
+import random
 
 
 SENSOR_SHAPES = {
