@@ -48,7 +48,7 @@ def process_sensor(sensor: str, base_root: str, output_dir: str, input_subpath: 
             "data": [],
             "mask-seg": [],
             "det-bbox-abs-10ms": [],
-            "pose6d-abs": []
+            "pose6d-abs-10ms": []
         }
 
         print(f"[DEBUG] Processing sensor: {sensor}, scene: {scene} with {len(img_paths)} images")
@@ -58,7 +58,7 @@ def process_sensor(sensor: str, base_root: str, output_dir: str, input_subpath: 
             lines["data"].append(str(p))
             lines["mask-seg"].append(str(build_target_path(p, replace_map["mask-seg"])))
             lines["det-bbox-abs-10ms"].append(str(build_target_path(p, replace_map["det-bbox-abs-10ms"], ".txt")))
-            lines["pose6d-abs"].append(str(build_target_path(p, replace_map["pose6d-abs"], ".txt")))
+            lines["pose6d-abs-10ms"].append(str(build_target_path(p, replace_map["pose6d-abs-10ms"], ".txt")))
 
         for task, paths in lines.items():
             out_path = Path(output_dir) / f"{sensor}_{task}_{scene}.txt"
@@ -74,7 +74,7 @@ def generate_txt_files(base_root: str, output_dir: str):
             "replace_map": {
                 "mask-seg": {"events-frames2": "frames", "events_noisy": "masks-seg"},
                 "det-bbox-abs-10ms": {"events-frames2": "frames", "events_noisy": "det-bbox-abs-10ms"},
-                "pose6d-abs": {"events-frames2": "frames", "events_noisy": "pose6d-abs"},
+                "pose6d-abs-10ms": {"events-frames2": "frames", "events_noisy": "pose6d-abs-10ms"},
             }
         },
         "evk4": {
@@ -82,7 +82,7 @@ def generate_txt_files(base_root: str, output_dir: str):
             "replace_map": {
                 "mask-seg": {"events-frames2": "frames", "events_noisy": "masks-seg"},
                 "det-bbox-abs-10ms": {"events-frames2": "frames", "events_noisy": "det-bbox-abs-10ms"},
-                "pose6d-abs": {"events-frames2": "frames", "events_noisy": "pose6d-abs"},
+                "pose6d-abs-10ms": {"events-frames2": "frames", "events_noisy": "pose6d-abs-10ms"},
             }
         },
         "asus": {
@@ -90,7 +90,7 @@ def generate_txt_files(base_root: str, output_dir: str):
             "replace_map": {
                 "mask-seg": {"images": "masks-seg"},
                 "det-bbox-abs-10ms": {"images": "det-bbox-abs-10ms"},
-                "pose6d-abs": {"images": "pose6d-abs"},
+                "pose6d-abs-10ms": {"images": "pose6d-abs-10ms"},
             }
         }
     }
