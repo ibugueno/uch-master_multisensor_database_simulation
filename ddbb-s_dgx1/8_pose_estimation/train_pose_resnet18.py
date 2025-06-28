@@ -169,6 +169,24 @@ def draw_pose_axes(img, quat, bbox=None, color_x=(0,0,255), color_y=(0,255,0), c
     return img_draw
 
 
+def save_pose_example_outputs(img_tensor, quat_pred, quat_gt, out_dir, img_name):
+    """
+    Guarda dos imágenes:
+    - Predicha con ejes XYZ dibujados según quat_pred
+    - Ground truth con ejes XYZ dibujados según quat_gt
+    """
+    to_pil = transforms.ToPILImage()
+    img_pil = to_pil(img_tensor)
+
+    # Imagen predicha
+    img_pred = draw_pose_axes(img_pil, quat_pred)
+    img_pred.save(out_dir / f"{img_name}_pred.png")
+
+    # Imagen ground truth
+    img_gt = draw_pose_axes(img_pil, quat_gt)
+    img_gt.save(out_dir / f"{img_name}_gt.png")
+
+
 def save_pose_example_outputs_pose(imgs, quat_preds, quat_gts, img_names, out_path, scene):
     """
     Guarda un ejemplo por objeto para orientation_88_-6_-34:
