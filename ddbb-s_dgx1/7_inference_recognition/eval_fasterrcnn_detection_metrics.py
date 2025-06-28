@@ -23,10 +23,10 @@ def set_seed(seed):
     torch.cuda.manual_seed_all(seed)
 
 class FasterRCNNDataset(Dataset):
-    def __init__(self, image_paths, bbox_paths, transforms=None):
+    def __init__(self, image_paths, bbox_paths, tfms=None):
         self.image_paths = image_paths
         self.bbox_paths = bbox_paths
-        self.transforms = transforms or transforms.ToTensor()
+        self.transforms = tfms or transforms.ToTensor()
 
     def __len__(self):
         return len(self.image_paths)
