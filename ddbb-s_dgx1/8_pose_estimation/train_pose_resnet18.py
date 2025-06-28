@@ -145,7 +145,7 @@ class PoseResNet18(nn.Module):
     def forward(self, x):
         return self.backbone(x)
 
-def draw_pose_axes(img, quat, bbox=None, color_x=(255,0,0), color_y=(0,255,0), color_z=(0,0,255), length=40):
+def draw_pose_axes(img, quat, bbox=None, color_x=(0,0,255), color_y=(0,255,0), color_z=(255,0,0), length=80):
     """
     Dibuja sistema de coordenadas x,y,z en el centro de la imagen recortada, orientado por quaternion.
     Si se pasa bbox=(xmin,ymin,xmax,ymax), dibuja en centro del bbox en img original.
@@ -166,29 +166,29 @@ def draw_pose_axes(img, quat, bbox=None, color_x=(255,0,0), color_y=(0,255,0), c
     for axis, color in zip(axes, [color_x, color_y, color_z]):
         end_x = cx + axis[0] * length
         end_y = cy - axis[1] * length  # Y invertido imagen
-        draw.line([(cx, cy), (end_x, end_y)], fill=color, width=3)
+        draw.line([(cx, cy), (end_x, end_y)], fill=color, width=5)
 
     return img_draw
 
 
-def save_pose_example_outputs_pose(imgs, quat_preds, quat_gts, img_names, out_path):
+def save_pose_example_outputs_pose(imgs, quat_preds, quat_gts, img_names, out_path, scene):
     """
     Guarda un ejemplo por objeto para orientation_88_-6_-34:
     imagen original, predicha con ejes XYZ, ground truth con ejes XYZ.
-    Selecciona index 60% de las muestras ordenadas por nombre.
+    Usa index 60% si scene==2, sino usa la mitad.
     """
     out_dir = Path(out_path) / "examples"
     out_dir.mkdir(exist_ok=True)
 
     orientation_objects = defaultdict(list)
 
-    # === Agrupar indices por objeto ===
+    # Agrupar indices por objeto
     for i, name in enumerate(img_names):
         if "orientation_88_-6_-34" in name:
             obj = name.split("/")[-3]
             orientation_objects[obj].append((i, name))
 
-    # === Procesar cada objeto ===
+    # Procesar cada objeto
     for obj in sorted(orientation_objects.keys()):
         entries = orientation_objects[obj]
         sorted_entries = sorted(entries, key=lambda x: os.path.basename(x[1]))
@@ -197,15 +197,16 @@ def save_pose_example_outputs_pose(imgs, quat_preds, quat_gts, img_names, out_pa
         if not indices_sorted:
             continue
 
-        # Seleccionar index 60% o mitad
-        idx = indices_sorted[int(0.6 * len(indices_sorted))] if len(indices_sorted) >= 2 else indices_sorted[0]
+        if int(scene) == 2:
+            idx = indices_sorted[int(0.6 * len(indices_sorted))]
+        else:
+            idx = indices_sorted[len(indices_sorted)//2]
 
         img_tensor = imgs[idx].cpu()
         quat_pred = quat_preds[idx].cpu()
         quat_gt = quat_gts[idx].cpu()
         img_name = os.path.basename(img_names[idx])
 
-        # === Guardar imagen concatenada ===
         save_pose_example_outputs(img_tensor, quat_pred, quat_gt, out_dir, img_name)
 
 
@@ -216,7 +217,6 @@ def train_eval(args, model, device, train_loader, val_loader):
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     criterion = nn.MSELoss()
 
-    # === Crear carpeta y logs ===
     out_path = os.path.join(args.output_dir, f"{args.sensor}_scene_{args.scene}")
     os.makedirs(out_path, exist_ok=True)
 
@@ -227,7 +227,7 @@ def train_eval(args, model, device, train_loader, val_loader):
                          'val_total_loss', 'val_z_loss', 'val_q_loss'])
 
         for epoch in range(args.epochs):
-            # === Entrenamiento ===
+            # Entrenamiento
             model.train()
             train_total_loss, train_z_loss, train_q_loss = 0, 0, 0
             for images, z, quat, _ in tqdm(train_loader, desc=f"Epoch {epoch+1} [Train]"):
@@ -248,14 +248,16 @@ def train_eval(args, model, device, train_loader, val_loader):
             n_train = len(train_loader)
             tl, zl, ql = train_total_loss/n_train, train_z_loss/n_train, train_q_loss/n_train
 
-            # === Validación ===
+            # Validación
             model.eval()
             val_total_loss, val_z_loss, val_q_loss = 0, 0, 0
             val_log_path = os.path.join(out_path, f'val_epoch{epoch+1}.csv')
+
+            images_all, quat_preds_all, quat_gts_all, img_names_all = [], [], [], []
+
             with open(val_log_path, 'w', newline='') as valcsv:
                 val_writer = csv.DictWriter(valcsv, fieldnames=['image', 'z_loss', 'q_loss', 'total_loss'])
                 val_writer.writeheader()
-
 
                 with torch.no_grad():
                     for images, z, quat, img_names in tqdm(val_loader, desc=f"Epoch {epoch+1} [Val]"):
@@ -270,6 +272,11 @@ def train_eval(args, model, device, train_loader, val_loader):
                         val_z_loss += z_loss.item()
                         val_q_loss += q_loss.item()
 
+                        images_all.extend(images.cpu())
+                        quat_preds_all.extend(quat_pred.cpu())
+                        quat_gts_all.extend(quat.cpu())
+                        img_names_all.extend(img_names)
+
                         for i in range(len(img_names)):
                             val_writer.writerow({
                                 'image': img_names[i],
@@ -278,25 +285,22 @@ def train_eval(args, model, device, train_loader, val_loader):
                                 'total_loss': loss.item()
                             })
 
-                            # === Guardar ejemplo con ejes XYZ ===
-                            save_pose_example_outputs(
-                                images[i].cpu(),
-                                quat_pred[i].cpu(),
-                                quat[i].cpu(),
-                                os.path.join(out_path, "examples"),
-                                img_names[i]
-                            )
-
-
             n_val = len(val_loader)
             vl, vzl, vql = val_total_loss/n_val, val_z_loss/n_val, val_q_loss/n_val
 
-            # === Guardar métricas ===
+            # Guardar métricas
             writer.writerow([epoch+1, tl, zl, ql, vl, vzl, vql])
             print(f"[INFO] Epoch {epoch+1} Train Loss: {tl:.4f} | Val Loss: {vl:.4f}")
 
-            # === Guardar modelo ===
+            # Guardar ejemplo por objeto
+            save_pose_example_outputs_pose(
+                images_all, quat_preds_all, quat_gts_all, img_names_all, out_path, args.scene
+            )
+
+            # Guardar modelo
             torch.save(model.state_dict(), os.path.join(out_path, f'model_epoch{epoch+1}.pth'))
+
+
 
 
 
