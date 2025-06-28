@@ -324,7 +324,8 @@ def train_eval(args, model, device, train_loader, val_loader):
                                         metrics['yaw']/count])
 
             # Guardar modelo por epoch
-            torch.save(model.state_dict(), os.path.join(out_path, f'model_epoch{epoch+1}.pth'))
+            #torch.save(model.state_dict(), os.path.join(out_path, f'model_epoch{epoch+1}.pth'))
+            torch.save(model.state_dict(), os.path.join(out_path, f'model.pth'))
 
             # Guardar métricas globales en csv principal
             writer.writerow([epoch+1,
@@ -337,6 +338,18 @@ def train_eval(args, model, device, train_loader, val_loader):
 
             # Guardar ejemplos de outputs con save_pose_example_outputs_pose
             save_pose_example_outputs_pose(images_all, quat_preds_all, quat_gts_all, img_names_all, out_path, args.scene)
+
+
+            val_mae_z = sum(m['z_mae'] for m in val_metrics.values()) / sum(val_counts.values())
+            val_q_mse = sum(m['q_mse'] for m in val_metrics.values()) / sum(val_counts.values())
+            val_q_angle = sum(m['q_angle'] for m in val_metrics.values()) / sum(val_counts.values())
+            val_roll = sum(m['roll'] for m in val_metrics.values()) / sum(val_counts.values())
+            val_pitch = sum(m['pitch'] for m in val_metrics.values()) / sum(val_counts.values())
+            val_yaw = sum(m['yaw'] for m in val_metrics.values()) / sum(val_counts.values())
+
+            print(f"[VAL] Epoch {epoch+1}: z_mae={val_mae_z:.3f}, q_mse={val_q_mse:.3f}, q_angle={val_q_angle:.1f} deg, "
+                  f"roll_err={val_roll:.1f}, pitch_err={val_pitch:.1f}, yaw_err={val_yaw:.1f}")
+
 
             print(f"[INFO] Epoch {epoch+1} completado. Model, métricas globales, por objeto y ejemplos guardados.")
 
