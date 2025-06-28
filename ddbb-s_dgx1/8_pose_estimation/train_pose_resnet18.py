@@ -325,7 +325,14 @@ def train_eval(args, model, device, train_loader, val_loader):
                              val_mae_z_epoch, val_q_mse_epoch, val_q_angle_epoch,
                              val_roll_error_epoch, val_pitch_error_epoch, val_yaw_error_epoch])
 
-            print(f"[INFO] Epoch {epoch+1} | Train Loss: {tl:.4f}, Val Loss: {vl:.4f}, MAE_z: {val_mae_z_epoch:.2f}cm, Roll: {val_roll_error_epoch:.1f}, Pitch: {val_pitch_error_epoch:.1f}, Yaw: {val_yaw_error_epoch:.1f}")
+
+            print(f"[INFO] Epoch {epoch+1} | Train Loss: {tl:.4f}, Val Loss: {vl:.4f}, "
+                  f"MAE_z: {val_mae_z_epoch:.2f}cm, "
+                  f"Angle_err: {val_q_angle_epoch:.1f}deg, "  # <-- añade esta línea
+                  f"Roll: {val_roll_error_epoch:.1f}, "
+                  f"Pitch: {val_pitch_error_epoch:.1f}, "
+                  f"Yaw: {val_yaw_error_epoch:.1f}")
+
 
             save_pose_example_outputs_pose(images_all, quat_preds_all, quat_gts_all, img_names_all, out_path, args.scene)
             torch.save(model.state_dict(), os.path.join(out_path, f'model_epoch{epoch+1}.pth'))
