@@ -1,6 +1,6 @@
 #!/bin/bash
 
-SCRIPT_PATH="eval_fasterrcnn_metrics.py"
+SCRIPT_PATH="eval_fasterrcnn_detection_metrics.py"
 INPUT_DIR="/app/input/dataloader/"
 OUTPUT_DIR="/app/output/recognition/"
 MODEL_DIR="/app/output/det/"
@@ -14,7 +14,7 @@ for sensor in "asus" "davis346"; do
 
     for scene in 0 1 2 3; do
         gpu=$((base_gpu + scene))
-        session="eval_det_${sensor}_scene${scene}"
+        session="eval_rec_${sensor}_scene${scene}"
         model_path="${MODEL_DIR}${sensor}_scene_${scene}/fasterrcnn_model.pth"
 
         tmux new-session -d -s $session "

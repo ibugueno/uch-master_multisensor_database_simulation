@@ -1,0 +1,1 @@
+tmux ls | grep 'eval_rec_' | cut -d: -f1 | xargs -n1 tmux kill-session -t
