@@ -366,7 +366,7 @@ def train_eval(args, model, device, train_loader, val_loader):
 
                 pos_loss = criterion(pos_pred, pos_gt)
                 q_loss = geodesic_loss(quat_pred, quat)  # ahora q_loss es el error angular medio en radianes
-                loss = pos_loss + 50 * q_loss  # el factor depende de la magnitud; ajusta tras observar entrenamiento
+                loss = pos_loss + 100 * q_loss  # el factor depende de la magnitud; ajusta tras observar entrenamiento
 
 
                 loss.backward()
@@ -380,6 +380,9 @@ def train_eval(args, model, device, train_loader, val_loader):
             x_px_preds_all, y_px_preds_all, x_px_gts_all, y_px_gts_all = [], [], [], []
 
 
+            total_q_geodesic = 0.0
+            num_batches = 0
+
             with torch.no_grad():
                 for images, x_px, y_px, z, quat, img_names in tqdm(val_loader, desc=f"Epoch {epoch+1} [Val]"):
                     images, x_px, y_px, z, quat = images.to(device), x_px.to(device), y_px.to(device), z.to(device), quat.to(device)
@@ -388,6 +391,9 @@ def train_eval(args, model, device, train_loader, val_loader):
                     pos_gt = torch.cat([x_px, y_px, z], dim=1).squeeze()
                     pos_loss_batch = criterion(pos_pred, pos_gt).item()
                     q_loss_batch = geodesic_loss(quat_pred, quat).item()
+
+                    total_q_geodesic += q_loss_batch
+                    num_batches += 1
 
 
                     # Resto de métricas permanece igual
@@ -424,6 +430,8 @@ def train_eval(args, model, device, train_loader, val_loader):
                     x_px_gts_all.extend(x_px.cpu())
                     y_px_gts_all.extend(y_px.cpu())
 
+            val_q_geodesic = total_q_geodesic / num_batches
+
 
             # Guardar métricas por objeto (archivo separado por objeto)
             for obj, metrics in val_metrics.items():
@@ -457,7 +465,8 @@ def train_eval(args, model, device, train_loader, val_loader):
             val_yaw = sum(m['yaw'] for m in val_metrics.values()) / total_count
 
             val_pos_loss = (val_mae_x + val_mae_y + val_mae_z) / 3
-            total_loss = val_pos_loss + 20 * val_q_mse
+            total_loss = val_pos_loss + 100 * val_q_geodesic
+
 
             writer.writerow([epoch+1,
                              total_loss, val_pos_loss, val_q_mse,
