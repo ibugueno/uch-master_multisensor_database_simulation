@@ -367,7 +367,8 @@ def train_eval(args, model, device, train_loader, val_loader):
 
         for epoch in range(args.epochs):
             model.train()
-            for images, x_px, y_px, z, quat, _ in tqdm(train_loader, desc=f"Epoch {epoch+1} [Train]"):
+            for images, x_px, y_px, z, quat, *_ in tqdm(train_loader, desc=f"Epoch {epoch+1} [Train]"):
+
                 images, x_px, y_px, z, quat = images.to(device), x_px.to(device), y_px.to(device), z.to(device), quat.to(device)
                 optimizer.zero_grad()
                 
