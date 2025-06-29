@@ -141,7 +141,7 @@ class PoseDataset(Dataset):
 
             depth_cm = data[6]
             quat = torch.tensor(data[7:11], dtype=torch.float32)
-            #quat = quat / quat.norm()
+            quat = quat / quat.norm()
 
         img_cropped = img.crop((int(xmin), int(ymin), int(xmax), int(ymax)))
         img_tensor = self.transform(img_cropped)  # apply fixed resize + ToTensor
@@ -304,6 +304,10 @@ def quaternion_angle_error(q_pred, q_gt):
     return angle
 
 def quaternion_to_euler_deg(quat):
+    norm = quat.norm(dim=-1, keepdim=True)
+    if (norm < 1e-5).any():
+        raise ValueError("Zero-norm quaternion detected before conversion to euler.")
+    quat = quat / norm.clamp(min=1e-6)
     rot_rel = R.from_quat(quat.cpu().numpy())
     rot_cam = R.from_euler('x', 90, degrees=True)
     rot_obj = rot_cam * rot_rel
@@ -311,6 +315,7 @@ def quaternion_to_euler_deg(quat):
     rot_obj_adjusted = rot_obj * rot_extra_x
     euler_deg = rot_obj_adjusted.as_euler('xyz', degrees=True)
     return torch.tensor(euler_deg)
+
 
 def project_to_so3(rot_mat):
     U, _, Vt = torch.svd(rot_mat)
@@ -415,7 +420,10 @@ def rot_mat_to_quat_torch(rot_mat):
             quat[cond_neg][idx3,2] = (rot_mat[cond_neg][idx3,1,2] + rot_mat[cond_neg][idx3,2,1]) / S3
             quat[cond_neg][idx3,3] = 0.25 * S3
 
-    quat = quat / quat.norm(dim=1, keepdim=True).clamp(min=1e-8)
+    norm = quat.norm(dim=1, keepdim=True)
+    norm = torch.clamp(norm, min=1e-6)  # aumenta el mínimo para robustez
+    quat = quat / norm
+
     return quat
 
 
