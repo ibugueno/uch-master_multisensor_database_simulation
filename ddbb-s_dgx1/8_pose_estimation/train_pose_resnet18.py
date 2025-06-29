@@ -159,8 +159,7 @@ class PoseDataset(Dataset):
 class PoseResNet18(nn.Module):
     def __init__(self):
         super(PoseResNet18, self).__init__()
-        #self.backbone = models.resnet18(pretrained=True)
-        self.backbone = models.resnet18(pretrained=False)
+        self.backbone = models.resnet18(pretrained=True)
         self.backbone.fc = nn.Linear(self.backbone.fc.in_features, 7)  # x_px, y_px, z, q0, q1, q2, q3
 
     def forward(self, x):
