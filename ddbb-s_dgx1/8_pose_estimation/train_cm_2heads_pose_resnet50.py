@@ -419,6 +419,11 @@ def train_eval(args, model, device, train_loader, val_loader):
                     x_px_pred, y_px_pred, z_pred = pos_pred[:,0], pos_pred[:,1], pos_pred[:,2]
 
 
+                    crop_w = crop_w.to(x_px_pred.device)
+                    crop_h = crop_h.to(x_px_pred.device)
+                    xmin = xmin.to(x_px_pred.device)
+                    ymin = ymin.to(x_px_pred.device)
+
                     # Convertir x_px_pred y x_px_gt de normalizado [0,1] a px absolutos en crop
                     x_px_pred_abs = x_px_pred * crop_w + xmin
                     y_px_pred_abs = y_px_pred * crop_h + ymin
