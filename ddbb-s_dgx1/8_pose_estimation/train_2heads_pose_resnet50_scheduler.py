@@ -341,7 +341,7 @@ def train_eval(args, model, device, train_loader, val_loader):
     set_seed(args.seed)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
-    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3, verbose=True)
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3)
 
     criterion = torch.nn.MSELoss()
 
