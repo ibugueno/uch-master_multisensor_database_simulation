@@ -154,6 +154,11 @@ class PoseDataset(Dataset):
         if obj_class not in CLASS_MAPPING:
             raise ValueError(f"[ERROR] Object class '{obj_class}' not found in CLASS_MAPPING. Path: {img_path}")
 
+        crop_w = torch.tensor([crop_w], dtype=torch.float32)
+        crop_h = torch.tensor([crop_h], dtype=torch.float32)
+        xmin = torch.tensor([xmin], dtype=torch.float32)
+        ymin = torch.tensor([ymin], dtype=torch.float32)
+
         return img_tensor, x_px, y_px, z, quat, img_path, crop_w, crop_h, xmin, ymin
 
 
