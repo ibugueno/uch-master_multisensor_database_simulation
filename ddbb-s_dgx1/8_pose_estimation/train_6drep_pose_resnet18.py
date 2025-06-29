@@ -141,7 +141,7 @@ class PoseDataset(Dataset):
 
             depth_cm = data[6]
             quat = torch.tensor(data[7:11], dtype=torch.float32)
-            quat = quat / quat.norm()
+            #quat = quat / quat.norm()
 
         img_cropped = img.crop((int(xmin), int(ymin), int(xmax), int(ymax)))
         img_tensor = self.transform(img_cropped)  # apply fixed resize + ToTensor
