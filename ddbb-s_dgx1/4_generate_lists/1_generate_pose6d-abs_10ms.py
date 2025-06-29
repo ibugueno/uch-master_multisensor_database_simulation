@@ -6,12 +6,14 @@ import csv
 import shutil
 
 def process_pose6d_and_bbox(pose6d_file, bbox_file, dst_file):
-    # Leer pose6d (profundidad y quaterniones)
+    # Leer pose6d (x_px, y_px, profundidad y quaterniones)
     with open(pose6d_file) as f:
         reader = csv.reader(f)
         header_pose = next(reader)
         row_pose = next(reader)
         # Estructura: x_px,y_px,z_cm,qw,qx,qy,qz
+        x_px = float(row_pose[0])
+        y_px = float(row_pose[1])
         depth_cm = float(row_pose[2])
         qw = float(row_pose[3])
         qx = float(row_pose[4])
@@ -25,8 +27,8 @@ def process_pose6d_and_bbox(pose6d_file, bbox_file, dst_file):
         row_bbox = next(reader)
         xmin, ymin, xmax, ymax = map(int, row_bbox)
 
-    # Combinar
-    combined_row = [xmin, ymin, xmax, ymax, depth_cm, qx, qy, qz, qw]
+    # Combinar en orden solicitado
+    combined_row = [xmin, ymin, xmax, ymax, x_px, y_px, depth_cm, qx, qy, qz, qw]
 
     # Debug info
     print(f"[INFO] Writing combined file to: {dst_file}")
@@ -34,7 +36,9 @@ def process_pose6d_and_bbox(pose6d_file, bbox_file, dst_file):
         dst_file.parent.mkdir(parents=True, exist_ok=True)
         with open(dst_file, "w", newline='') as f:
             writer = csv.writer(f)
-            writer.writerow(["xmin", "ymin", "xmax", "ymax", "depth_cm", "qx", "qy", "qz", "qw"])
+            writer.writerow(["xmin", "ymin", "xmax", "ymax",
+                             "x_px", "y_px", "depth_cm",
+                             "qx", "qy", "qz", "qw"])
             writer.writerow(combined_row)
 
 
