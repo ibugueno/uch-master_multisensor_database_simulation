@@ -17,6 +17,7 @@ from collections import defaultdict
 from pathlib import Path
 import random
 import torch.nn.functional as F
+import yaml
 
 
 SENSOR_SHAPES = {
@@ -153,7 +154,7 @@ class PoseDataset(Dataset):
         if obj_class not in CLASS_MAPPING:
             raise ValueError(f"[ERROR] Object class '{obj_class}' not found in CLASS_MAPPING. Path: {img_path}")
 
-        return img_tensor, x_px, y_px, z, quat, img_path
+        return img_tensor, x_px, y_px, z, quat, img_path, crop_w, crop_h, xmin, ymin
 
 
 
@@ -339,6 +340,13 @@ def train_eval(args, model, device, train_loader, val_loader):
     os.makedirs(args.output_dir, exist_ok=True)
     set_seed(args.seed)
 
+    with open(f"sensors/config_{args.sensor}.yaml") as f:
+        cam_config = yaml.safe_load(f)
+    focal_length_px = cam_config['camera']['focal_length_px']
+    focal_length_py = cam_config['camera']['focal_length_py']
+    res_w = cam_config['camera']['resolution']['width']
+    res_h = cam_config['camera']['resolution']['height']
+
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     criterion = torch.nn.MSELoss()
 
@@ -351,8 +359,10 @@ def train_eval(args, model, device, train_loader, val_loader):
 
     with open(csv_log_path, 'w', newline='') as csvfile:
         writer = csv.writer(csvfile)
-        writer.writerow(['epoch', 'val_total_loss', 'val_x_loss', 'val_y_loss', 'val_z_loss', 'val_q_loss',
-                         'val_mae_x', 'val_mae_y', 'val_mae_z', 'val_q_mse', 'val_q_angle',
+        writer.writerow(['epoch', 'val_total_loss', 'val_pos_loss', 'val_q_geodesic',
+                         'val_mae_x', 'val_mae_y', 'val_mae_z',
+                         'err_x_cm', 'err_y_cm',
+                         'val_q_mse', 'val_q_angle',
                          'val_roll_error', 'val_pitch_error', 'val_yaw_error'])
 
         for epoch in range(args.epochs):
@@ -376,15 +386,18 @@ def train_eval(args, model, device, train_loader, val_loader):
             model.eval()
             val_metrics = defaultdict(lambda: defaultdict(float))
             val_counts = defaultdict(int)
+            
             images_all, quat_preds_all, quat_gts_all, img_names_all = [], [], [], []
             x_px_preds_all, y_px_preds_all, x_px_gts_all, y_px_gts_all = [], [], [], []
-
+            err_x_cm_all = []
+            err_y_cm_all = []
 
             total_q_geodesic = 0.0
             num_batches = 0
 
             with torch.no_grad():
-                for images, x_px, y_px, z, quat, img_names in tqdm(val_loader, desc=f"Epoch {epoch+1} [Val]"):
+                for images, x_px, y_px, z, quat, img_names, crop_w, crop_h, xmin, ymin in tqdm(val_loader, desc=f"Epoch {epoch+1} [Val]"):
+
                     images, x_px, y_px, z, quat = images.to(device), x_px.to(device), y_px.to(device), z.to(device), quat.to(device)
                     pos_pred, quat_pred = model(images)
 
@@ -398,6 +411,29 @@ def train_eval(args, model, device, train_loader, val_loader):
 
                     # Resto de métricas permanece igual
                     x_px_pred, y_px_pred, z_pred = pos_pred[:,0], pos_pred[:,1], pos_pred[:,2]
+
+
+                    # Convertir x_px_pred y x_px_gt de normalizado [0,1] a px absolutos en crop
+                    x_px_pred_abs = x_px_pred * crop_w + xmin
+                    y_px_pred_abs = y_px_pred * crop_h + ymin
+
+                    x_px_gt_abs = x_px.squeeze() * crop_w + xmin
+                    y_px_gt_abs = y_px.squeeze() * crop_h + ymin
+
+                    # Reproyección a cm usando pinhole (Z = profundidad en cm)
+                    # Delta_u * Z / f
+                    delta_x_px = x_px_pred_abs - x_px_gt_abs
+                    delta_y_px = y_px_pred_abs - y_px_gt_abs
+
+                    # Ajusta si focal length está en mm. Si tu focal_length_px ya es en px según la calibración, usa directamente:
+                    err_x_cm = delta_x_px * z_pred / focal_length_px
+                    err_y_cm = delta_y_px * z_pred / focal_length_py
+
+                    # Guarda abs para métricas globales
+                    err_x_cm_abs = torch.abs(err_x_cm).cpu().numpy()
+                    err_y_cm_abs = torch.abs(err_y_cm).cpu().numpy()
+                    err_x_cm_all.extend(err_x_cm_abs)
+                    err_y_cm_all.extend(err_y_cm_abs)
 
                     x_mae_each = torch.abs(x_px_pred - x_px.squeeze()).cpu().numpy()
                     y_mae_each = torch.abs(y_px_pred - y_px.squeeze()).cpu().numpy()
@@ -467,11 +503,15 @@ def train_eval(args, model, device, train_loader, val_loader):
             val_pos_loss = (val_mae_x + val_mae_y + val_mae_z) / 3
             total_loss = val_pos_loss + 100 * val_q_geodesic
 
+            mean_err_x_cm = np.mean(err_x_cm_all)
+            mean_err_y_cm = np.mean(err_y_cm_all)
+
 
             writer.writerow([epoch+1,
-                             total_loss, val_pos_loss, val_q_mse,
-                             val_mae_x, val_mae_y, val_mae_z, val_q_mse,
-                             val_mae_x, val_mae_y, val_mae_z, val_q_mse, val_q_angle,
+                             total_loss, val_pos_loss, val_q_geodesic,
+                             val_mae_x, val_mae_y, val_mae_z,
+                             mean_err_x_cm, mean_err_y_cm,
+                             val_q_mse, val_q_angle,
                              val_roll, val_pitch, val_yaw])
 
             # Guardar ejemplos de outputs con save_pose_example_outputs_pose
@@ -484,8 +524,11 @@ def train_eval(args, model, device, train_loader, val_loader):
                 out_path, args.scene
             )
 
-            print(f"[VAL] Epoch {epoch+1}: x_mae={val_mae_x:.1f}, y_mae={val_mae_y:.1f}, z_mae={val_mae_z:.1f}, q_mse={val_q_mse:.3f}, q_angle={val_q_angle:.1f} deg, "
+            print(f"[VAL] Epoch {epoch+1}: x_mae={val_mae_x:.3f}, y_mae={val_mae_y:.3f}, z_mae={val_mae_z:.1f}, "
+                  f"err_x_cm={mean_err_x_cm:.2f} cm, err_y_cm={mean_err_y_cm:.2f} cm, "
+                  f"q_mse={val_q_mse:.4f}, q_angle={val_q_angle:.1f} deg, "
                   f"roll_err={val_roll:.1f}, pitch_err={val_pitch:.1f}, yaw_err={val_yaw:.1f}")
+
 
             print(f"[INFO] Epoch {epoch+1} completado. Model, métricas globales, por objeto y ejemplos guardados.")
 

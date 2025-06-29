@@ -198,7 +198,7 @@ def draw_pose_axes(img, quat=None, cx=None, cy=None, bbox=None,
         rot_rel = R.from_quat(quat)
         rot_cam = R.from_euler('x', 90, degrees=True)
         rot_obj = rot_cam * rot_rel
-        rot_extra_x = R.from_euler('x', -90, degrees=True)
+        rot_extra_x = R.from_euler('x', 0, degrees=True)
         rot_obj_adjusted = rot_obj * rot_extra_x
 
         # === Obtener ejes transformados en WORLD ===

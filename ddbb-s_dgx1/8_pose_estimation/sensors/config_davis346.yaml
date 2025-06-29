@@ -1,0 +1,12 @@
+camera:
+  H-FOV: 61.13
+  V-FOV: 47.72
+  focal_length_mm_x: 5.4192
+  focal_length_mm_y: 5.4375
+  focal_length_px: 292.93
+  focal_length_py: 293.92
+  resolution:
+    height: 260
+    width: 346
+  sensor_height_mm: 4.81
+  sensor_width_mm: 6.4
