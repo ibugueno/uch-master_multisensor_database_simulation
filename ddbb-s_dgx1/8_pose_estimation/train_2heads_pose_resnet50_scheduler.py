@@ -17,6 +17,7 @@ from collections import defaultdict
 from pathlib import Path
 import random
 import torch.nn.functional as F
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 
 SENSOR_SHAPES = {
@@ -157,10 +158,10 @@ class PoseDataset(Dataset):
 
 
 
-class PoseResNet18TwoHeads(nn.Module):
+class PoseResNet50TwoHeads(nn.Module):
     def __init__(self):
-        super(PoseResNet18TwoHeads, self).__init__()
-        self.backbone = models.resnet18(pretrained=True)
+        super(PoseResNet50TwoHeads, self).__init__()
+        self.backbone = models.resnet50(pretrained=True)
         num_feats = self.backbone.fc.in_features
         self.backbone.fc = nn.Identity()  # remove original FC
 
@@ -322,12 +323,26 @@ def quaternion_to_euler_deg(quat):
     euler_deg = rot_obj_adjusted.as_euler('xyz', degrees=True)
     return torch.tensor(euler_deg)
 
+def geodesic_loss(q_pred, q_gt):
+    """
+    Calcula el error angular entre quaterniones predicho y ground truth.
+    Retorna el error en radianes.
+    """
+    q_pred = q_pred / q_pred.norm(dim=-1, keepdim=True)
+    q_gt = q_gt / q_gt.norm(dim=-1, keepdim=True)
+    dot = torch.sum(q_pred * q_gt, dim=-1)
+    dot = torch.clamp(dot, -1.0, 1.0)
+    theta = 2 * torch.acos(torch.abs(dot))  # en radianes
+    return theta.mean()  # promedio en el batch
+
 
 def train_eval(args, model, device, train_loader, val_loader):
     os.makedirs(args.output_dir, exist_ok=True)
     set_seed(args.seed)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+    scheduler = ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=3, verbose=True)
+
     criterion = torch.nn.MSELoss()
 
     out_path = os.path.join(args.output_dir, f"{args.sensor}_scene_{args.scene}")
@@ -351,10 +366,11 @@ def train_eval(args, model, device, train_loader, val_loader):
                 
                 pos_pred, quat_pred = model(images)
                 pos_gt = torch.cat([x_px, y_px, z], dim=1).squeeze()
-                pos_loss = criterion(pos_pred, pos_gt)
-                q_loss = criterion(quat_pred, quat)
 
-                loss = pos_loss + 100 * q_loss
+                pos_loss = criterion(pos_pred, pos_gt)
+                q_loss = geodesic_loss(quat_pred, quat)  # ahora q_loss es el error angular medio en radianes
+                loss = pos_loss + 50 * q_loss  # el factor depende de la magnitud; ajusta tras observar entrenamiento
+
 
                 loss.backward()
                 optimizer.step()
@@ -374,7 +390,8 @@ def train_eval(args, model, device, train_loader, val_loader):
 
                     pos_gt = torch.cat([x_px, y_px, z], dim=1).squeeze()
                     pos_loss_batch = criterion(pos_pred, pos_gt).item()
-                    q_loss_batch = criterion(quat_pred, quat).item()
+                    q_loss_batch = geodesic_loss(quat_pred, quat).item()
+
 
                     # Resto de métricas permanece igual
                     x_px_pred, y_px_pred, z_pred = pos_pred[:,0], pos_pred[:,1], pos_pred[:,2]
@@ -464,6 +481,10 @@ def train_eval(args, model, device, train_loader, val_loader):
             print(f"[VAL] Epoch {epoch+1}: x_mae={val_mae_x:.1f}, y_mae={val_mae_y:.1f}, z_mae={val_mae_z:.1f}, q_mse={val_q_mse:.3f}, q_angle={val_q_angle:.1f} deg, "
                   f"roll_err={val_roll:.1f}, pitch_err={val_pitch:.1f}, yaw_err={val_yaw:.1f}")
 
+            scheduler.step(val_q_angle)
+            current_lr = optimizer.param_groups[0]['lr']
+
+            print(f"[INFO] Current LR after scheduler step: {current_lr:.6f}")
             print(f"[INFO] Epoch {epoch+1} completado. Model, métricas globales, por objeto y ejemplos guardados.")
 
     print("✅ Entrenamiento finalizado con modelos guardados por epoch, métricas globales + por objeto y ejemplos.")
@@ -483,7 +504,7 @@ if __name__ == "__main__":
     parser.add_argument('--output_dir', required=True)
     parser.add_argument('--epochs', type=int, default=20)
     parser.add_argument('--batch_size', type=int, default=16)
-    parser.add_argument('--lr', type=float, default=1e-4)
+    parser.add_argument('--lr', type=float, default=1e-3)
     parser.add_argument('--gpu', type=int, default=0, help="GPU index to use (default: 0)")
     parser.add_argument('--seed', type=int, default=42)
     args = parser.parse_args()
@@ -500,7 +521,7 @@ if __name__ == "__main__":
 
     # === Modelo y device ===
     device = torch.device(f"cuda:{args.gpu}" if torch.cuda.is_available() else "cpu")
-    model = PoseResNet18TwoHeads().to(device)
+    model = PoseResNet50TwoHeads().to(device)
 
 
     train_eval(args, model, device, train_loader, val_loader)
