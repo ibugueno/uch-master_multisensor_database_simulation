@@ -395,21 +395,21 @@ def rot_mat_to_quat_torch(rot_mat):
         idx3 = (~idx1) & (~idx2)
 
         if idx1.sum() > 0:
-            S1 = torch.sqrt(1.0 + r00[idx1] - r11[idx1] - r22[idx1]) * 2
+            S1 = torch.sqrt(torch.clamp(1.0 + r00[idx1] - r11[idx1] - r22[idx1], min=1e-8)) * 2
             quat[cond_neg][idx1,0] = (rot_mat[cond_neg][idx1,2,1] - rot_mat[cond_neg][idx1,1,2]) / S1
             quat[cond_neg][idx1,1] = 0.25 * S1
             quat[cond_neg][idx1,2] = (rot_mat[cond_neg][idx1,0,1] + rot_mat[cond_neg][idx1,1,0]) / S1
             quat[cond_neg][idx1,3] = (rot_mat[cond_neg][idx1,0,2] + rot_mat[cond_neg][idx1,2,0]) / S1
 
         if idx2.sum() > 0:
-            S2 = torch.sqrt(1.0 + r11[idx2] - r00[idx2] - r22[idx2]) * 2
+            S2 = torch.sqrt(torch.clamp(1.0 + r11[idx2] - r00[idx2] - r22[idx2], min=1e-8)) * 2
             quat[cond_neg][idx2,0] = (rot_mat[cond_neg][idx2,0,2] - rot_mat[cond_neg][idx2,2,0]) / S2
             quat[cond_neg][idx2,1] = (rot_mat[cond_neg][idx2,0,1] + rot_mat[cond_neg][idx2,1,0]) / S2
             quat[cond_neg][idx2,2] = 0.25 * S2
             quat[cond_neg][idx2,3] = (rot_mat[cond_neg][idx2,1,2] + rot_mat[cond_neg][idx2,2,1]) / S2
 
         if idx3.sum() > 0:
-            S3 = torch.sqrt(1.0 + r22[idx3] - r00[idx3] - r11[idx3]) * 2
+            S3 = torch.sqrt(torch.clamp(1.0 + r22[idx3] - r00[idx3] - r11[idx3], min=1e-8)) * 2
             quat[cond_neg][idx3,0] = (rot_mat[cond_neg][idx3,1,0] - rot_mat[cond_neg][idx3,0,1]) / S3
             quat[cond_neg][idx3,1] = (rot_mat[cond_neg][idx3,0,2] + rot_mat[cond_neg][idx3,2,0]) / S3
             quat[cond_neg][idx3,2] = (rot_mat[cond_neg][idx3,1,2] + rot_mat[cond_neg][idx3,2,1]) / S3
@@ -417,6 +417,7 @@ def rot_mat_to_quat_torch(rot_mat):
 
     quat = quat / quat.norm(dim=1, keepdim=True).clamp(min=1e-8)
     return quat
+
 
 
 
