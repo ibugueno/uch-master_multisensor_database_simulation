@@ -354,7 +354,7 @@ def train_eval(args, model, device, train_loader, val_loader):
                 pos_loss = criterion(pos_pred, pos_gt)
                 q_loss = criterion(quat_pred, quat)
 
-                loss = pos_loss + 20 * q_loss
+                loss = pos_loss + 100 * q_loss
 
                 loss.backward()
                 optimizer.step()
