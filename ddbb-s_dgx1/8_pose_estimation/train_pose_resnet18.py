@@ -344,12 +344,23 @@ def train_eval(args, model, device, train_loader, val_loader):
                 x_px_pred, y_px_pred = outputs[:,0], outputs[:,1]
                 z_pred, quat_pred = outputs[:,2], outputs[:,3:]
 
+                # Normalizar quat_pred antes de angle error
+                quat_pred = quat_pred / quat_pred.norm(dim=-1, keepdim=True).clamp(min=1e-6)
+
                 x_loss = criterion(x_px_pred, x_px.squeeze())
                 y_loss = criterion(y_px_pred, y_px.squeeze())
                 z_loss = criterion(z_pred, z.squeeze())
                 q_loss = criterion(quat_pred, quat)
 
                 loss = x_loss + y_loss + z_loss + 20*q_loss
+
+                # === NEW: train quaternion angle error ===
+                train_q_angle_each = quaternion_angle_error(quat_pred, quat)
+                train_q_angle = train_q_angle_each.mean().item()
+
+                # === Print or log it ===
+                print(f"[TRAIN] q_angle (deg): {train_q_angle:.1f}")
+
                 loss.backward()
                 optimizer.step()
 
