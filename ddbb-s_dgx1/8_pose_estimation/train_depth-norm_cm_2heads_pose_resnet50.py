@@ -142,13 +142,17 @@ class PoseDataset(Dataset):
             y_px = torch.tensor([y_px_norm], dtype=torch.float32)
 
             depth_cm = data[6]
+            depth_norm = depth_cm / 500.0
+
             quat = torch.tensor(data[7:11], dtype=torch.float32)
             quat = quat / quat.norm()
 
         img_cropped = img.crop((int(xmin), int(ymin), int(xmax), int(ymax)))
         img_tensor = self.transform(img_cropped)  # apply fixed resize + ToTensor
 
-        z = torch.tensor([depth_cm], dtype=torch.float32)
+        #z = torch.tensor([depth_cm], dtype=torch.float32)
+        z = torch.tensor([depth_norm], dtype=torch.float32)
+
 
         obj_class = os.path.basename(os.path.dirname(os.path.dirname(img_path)))
         if obj_class not in CLASS_MAPPING:
@@ -362,7 +366,7 @@ def train_eval(args, model, device, train_loader, val_loader):
     per_object_dir = os.path.join(out_path, 'per_object_metrics')
     os.makedirs(per_object_dir, exist_ok=True)
 
-    beta_q_loss = 50
+    beta_q_loss = 1
 
     with open(csv_log_path, 'w', newline='') as csvfile:
         writer = csv.writer(csvfile)
@@ -419,6 +423,7 @@ def train_eval(args, model, device, train_loader, val_loader):
 
                     # Resto de métricas permanece igual
                     x_px_pred, y_px_pred, z_pred = pos_pred[:,0], pos_pred[:,1], pos_pred[:,2]
+                    z_pred = z_pred * 500.0
 
 
                     crop_w = crop_w.to(x_px_pred.device)
