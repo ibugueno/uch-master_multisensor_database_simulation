@@ -157,10 +157,10 @@ class PoseDataset(Dataset):
 
 
 
-class PoseResNet50TwoHeads(nn.Module):
+class PoseResNet18TwoHeads(nn.Module):
     def __init__(self):
-        super(PoseResNet50TwoHeads, self).__init__()
-        self.backbone = models.resnet50(pretrained=True)
+        super(PoseResNet18TwoHeads, self).__init__()
+        self.backbone = models.resnet18(pretrained=True)
         num_feats = self.backbone.fc.in_features
         self.backbone.fc = nn.Identity()  # remove original FC
 
@@ -500,7 +500,7 @@ if __name__ == "__main__":
 
     # === Modelo y device ===
     device = torch.device(f"cuda:{args.gpu}" if torch.cuda.is_available() else "cpu")
-    model = PoseResNet50TwoHeads().to(device)
+    model = PoseResNet18TwoHeads().to(device)
 
 
     train_eval(args, model, device, train_loader, val_loader)
