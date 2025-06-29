@@ -423,7 +423,9 @@ def train_eval(args, model, device, train_loader, val_loader):
 
                     # Resto de métricas permanece igual
                     x_px_pred, y_px_pred, z_pred = pos_pred[:,0], pos_pred[:,1], pos_pred[:,2]
-                    z_pred = z_pred * 500.0
+
+                    z_pred_cm = z_pred * 500.0
+                    z_gt_cm = z.squeeze() * 500.0
 
 
                     crop_w = crop_w.to(x_px_pred.device)
@@ -444,8 +446,10 @@ def train_eval(args, model, device, train_loader, val_loader):
                     delta_y_px = y_px_pred_abs - y_px_gt_abs
 
                     # Ajusta si focal length está en mm. Si tu focal_length_px ya es en px según la calibración, usa directamente:
-                    err_x_cm = delta_x_px * z_pred / focal_length_px
-                    err_y_cm = delta_y_px * z_pred / focal_length_py
+
+                    err_x_cm = delta_x_px * z_pred_cm / focal_length_px
+                    err_y_cm = delta_y_px * z_pred_cm / focal_length_py
+
 
                     # Guarda abs para métricas globales
                     err_x_cm_abs = torch.abs(err_x_cm).cpu().numpy()
@@ -456,7 +460,10 @@ def train_eval(args, model, device, train_loader, val_loader):
 
                     x_mae_each = torch.abs(x_px_pred - x_px.squeeze()).cpu().numpy()
                     y_mae_each = torch.abs(y_px_pred - y_px.squeeze()).cpu().numpy()
-                    z_mae_each = torch.abs(z_pred - z.squeeze()).cpu().numpy()
+                    
+                    z_mae_each = torch.abs(z_pred_cm - z_gt_cm).cpu().numpy()
+
+
                     q_mse_each = ((quat_pred - quat)**2).mean(dim=1).cpu().numpy()
                     q_angle_each = quaternion_angle_error(quat_pred, quat).cpu().numpy()
 
