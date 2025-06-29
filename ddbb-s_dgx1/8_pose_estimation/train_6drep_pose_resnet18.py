@@ -155,12 +155,11 @@ class PoseDataset(Dataset):
         return img_tensor, x_px, y_px, z, quat, img_path
 
 
-
 class PoseResNet18(nn.Module):
     def __init__(self):
         super(PoseResNet18, self).__init__()
         self.backbone = models.resnet18(pretrained=True)
-        self.backbone.fc = nn.Linear(self.backbone.fc.in_features, 7)  # x_px, y_px, z, q0, q1, q2, q3
+        self.backbone.fc = nn.Linear(self.backbone.fc.in_features, 9)  # x_px, y_px, z, 6D rot
 
     def forward(self, x):
         return self.backbone(x)
@@ -314,6 +313,97 @@ def quaternion_to_euler_deg(quat):
     return torch.tensor(euler_deg)
 
 
+def rot6d_to_matrix(rot_6d):
+    """
+    Convierte representación 6D a matriz de rotación 3x3.
+    rot_6d: (B,6)
+    Devuelve: (B,3,3)
+    """
+    a1 = rot_6d[:,0:3]
+    a2 = rot_6d[:,3:6]
+
+    b1 = nn.functional.normalize(a1, dim=1)
+    b2 = a2 - (b1 * (a2 * b1).sum(dim=1, keepdim=True))
+    b2 = nn.functional.normalize(b2, dim=1)
+    b3 = torch.cross(b1, b2, dim=1)
+
+    rot_mat = torch.stack([b1, b2, b3], dim=2)
+    return rot_mat
+
+def rotation_matrix_loss(R_pred, R_gt):
+    """
+    Frobenius norm loss entre matrices de rotación predicha y GT.
+    R_pred, R_gt: (B,3,3)
+    """
+    return ((R_pred - R_gt)**2).sum(dim=(1,2)).mean()
+
+def quat_to_rot_mat_torch(quat: torch.Tensor) -> torch.Tensor:
+    """
+    Convierte batch de quaternions (B,4) a matrices de rotación (B,3,3).
+    quaternion = [w, x, y, z] formato scalar-first.
+
+    Entrada:
+        quat: tensor (B,4)
+    Salida:
+        rot_mat: tensor (B,3,3)
+    """
+    B = quat.shape[0]
+    w, x, y, z = quat[:,0], quat[:,1], quat[:,2], quat[:,3]
+
+    N = torch.stack([1 - 2*(y**2 + z**2),
+                     2*(x*y - z*w),
+                     2*(x*z + y*w),
+                     2*(x*y + z*w),
+                     1 - 2*(x**2 + z**2),
+                     2*(y*z - x*w),
+                     2*(x*z - y*w),
+                     2*(y*z + x*w),
+                     1 - 2*(x**2 + y**2)], dim=1).reshape(B,3,3)
+    return N
+
+
+def rot_mat_to_quat_torch(rot_mat):
+    """
+    Convierte batch de matrices de rotación (B,3,3) a quaternions (B,4).
+    Implementación puramente Torch.
+    """
+    B = rot_mat.shape[0]
+    quat = torch.empty((B,4), device=rot_mat.device)
+    trace = rot_mat[:,0,0] + rot_mat[:,1,1] + rot_mat[:,2,2]
+
+    cond = trace > 0
+    S = torch.sqrt(trace[cond] + 1.0) * 2
+    quat[cond,0] = 0.25 * S
+    quat[cond,1] = (rot_mat[cond,2,1] - rot_mat[cond,1,2]) / S
+    quat[cond,2] = (rot_mat[cond,0,2] - rot_mat[cond,2,0]) / S
+    quat[cond,3] = (rot_mat[cond,1,0] - rot_mat[cond,0,1]) / S
+
+    cond = ~cond
+    r00 = rot_mat[cond,0,0]
+    r11 = rot_mat[cond,1,1]
+    r22 = rot_mat[cond,2,2]
+    if (r00 > r11) & (r00 > r22):
+        S = torch.sqrt(1.0 + r00 - r11 - r22) * 2
+        quat[cond,0] = (rot_mat[cond,2,1] - rot_mat[cond,1,2]) / S
+        quat[cond,1] = 0.25 * S
+        quat[cond,2] = (rot_mat[cond,0,1] + rot_mat[cond,1,0]) / S
+        quat[cond,3] = (rot_mat[cond,0,2] + rot_mat[cond,2,0]) / S
+    elif r11 > r22:
+        S = torch.sqrt(1.0 + r11 - r00 - r22) * 2
+        quat[cond,0] = (rot_mat[cond,0,2] - rot_mat[cond,2,0]) / S
+        quat[cond,1] = (rot_mat[cond,0,1] + rot_mat[cond,1,0]) / S
+        quat[cond,2] = 0.25 * S
+        quat[cond,3] = (rot_mat[cond,1,2] + rot_mat[cond,2,1]) / S
+    else:
+        S = torch.sqrt(1.0 + r22 - r00 - r11) * 2
+        quat[cond,0] = (rot_mat[cond,1,0] - rot_mat[cond,0,1]) / S
+        quat[cond,1] = (rot_mat[cond,0,2] + rot_mat[cond,2,0]) / S
+        quat[cond,2] = (rot_mat[cond,1,2] + rot_mat[cond,2,1]) / S
+        quat[cond,3] = 0.25 * S
+
+    return quat
+
++
 def train_eval(args, model, device, train_loader, val_loader):
     os.makedirs(args.output_dir, exist_ok=True)
     set_seed(args.seed)
@@ -342,12 +432,19 @@ def train_eval(args, model, device, train_loader, val_loader):
                 
                 outputs = model(images)
                 x_px_pred, y_px_pred = outputs[:,0], outputs[:,1]
-                z_pred, quat_pred = outputs[:,2], outputs[:,3:]
+                z_pred = outputs[:,2]
+                rot6d_pred = outputs[:,3:9]
+
+                rot_mat_pred = rot6d_to_matrix(rot6d_pred)
+
+                # Convertir ground truth quaternion a matriz de rotación
+                R_gt = quat_to_rot_mat_torch(quat)
+
 
                 x_loss = criterion(x_px_pred, x_px.squeeze())
                 y_loss = criterion(y_px_pred, y_px.squeeze())
                 z_loss = criterion(z_pred, z.squeeze())
-                q_loss = criterion(quat_pred, quat)
+                q_loss = rotation_matrix_loss(rot_mat_pred, R_gt)
 
                 loss = x_loss + y_loss + z_loss + q_loss
                 loss.backward()
@@ -359,15 +456,19 @@ def train_eval(args, model, device, train_loader, val_loader):
             images_all, quat_preds_all, quat_gts_all, img_names_all = [], [], [], []
             x_px_preds_all, y_px_preds_all, x_px_gts_all, y_px_gts_all = [], [], [], []
 
-
             with torch.no_grad():
                 for images, x_px, y_px, z, quat, img_names in tqdm(val_loader, desc=f"Epoch {epoch+1} [Val]"):
-
                     images, x_px, y_px, z, quat = images.to(device), x_px.to(device), y_px.to(device), z.to(device), quat.to(device)
 
                     outputs = model(images)
                     x_px_pred, y_px_pred = outputs[:,0], outputs[:,1]
-                    z_pred, quat_pred = outputs[:,2], outputs[:,3:]
+                    z_pred = outputs[:,2]
+                    rot6d_pred = outputs[:,3:9]
+
+                    rot_mat_pred = rot6d_to_matrix(rot6d_pred)
+
+                    # Convertir matrices predichas a quaternions para métricas y visualización
+                    quat_pred = rot_mat_to_quat_torch(rot_mat_pred)
 
                     x_mae_each = torch.abs(x_px_pred - x_px.squeeze()).cpu().numpy()
                     y_mae_each = torch.abs(y_px_pred - y_px.squeeze()).cpu().numpy()
@@ -400,8 +501,7 @@ def train_eval(args, model, device, train_loader, val_loader):
                     x_px_gts_all.extend(x_px.cpu())
                     y_px_gts_all.extend(y_px.cpu())
 
-
-            # Guardar métricas por objeto (archivo separado por objeto)
+            # Guardar métricas por objeto
             for obj, metrics in val_metrics.items():
                 count = val_counts[obj]
                 obj_csv = os.path.join(per_object_dir, f"{obj}.csv")
@@ -418,10 +518,10 @@ def train_eval(args, model, device, train_loader, val_loader):
                                         metrics['pitch']/count,
                                         metrics['yaw']/count])
 
-            # Guardar modelo por epoch
+            # Guardar modelo
             torch.save(model.state_dict(), os.path.join(out_path, f'model.pth'))
 
-            # Guardar métricas globales en csv principal
+            # Guardar métricas globales
             total_count = sum(val_counts.values())
             val_mae_x = sum(m['x_mae'] for m in val_metrics.values()) / total_count
             val_mae_y = sum(m['y_mae'] for m in val_metrics.values()) / total_count
@@ -433,16 +533,15 @@ def train_eval(args, model, device, train_loader, val_loader):
             val_yaw = sum(m['yaw'] for m in val_metrics.values()) / total_count
 
             writer.writerow([epoch+1,
-                             val_mae_x + val_mae_y + val_mae_z + val_q_mse,  # total loss
+                             val_mae_x + val_mae_y + val_mae_z + val_q_mse,
                              val_mae_x, val_mae_y, val_mae_z, val_q_mse,
                              val_mae_x, val_mae_y, val_mae_z, val_q_mse, val_q_angle,
                              val_roll, val_pitch, val_yaw])
 
-            # Guardar ejemplos de outputs con save_pose_example_outputs_pose
             save_pose_example_outputs_pose(
                 images_all,
-                x_px_preds_all, y_px_preds_all,   # ← NUEVO: listas con x/y predichos
-                x_px_gts_all, y_px_gts_all,       # ← NUEVO: listas con x/y ground truth
+                x_px_preds_all, y_px_preds_all,
+                x_px_gts_all, y_px_gts_all,
                 quat_preds_all, quat_gts_all,
                 img_names_all,
                 out_path, args.scene
@@ -456,7 +555,6 @@ def train_eval(args, model, device, train_loader, val_loader):
     print("✅ Entrenamiento finalizado con modelos guardados por epoch, métricas globales + por objeto y ejemplos.")
 
 
-# ✅ Incluye x/y losses en csv y en logs terminal, listo para integrarlo a tu training pipeline.
 
 
 
