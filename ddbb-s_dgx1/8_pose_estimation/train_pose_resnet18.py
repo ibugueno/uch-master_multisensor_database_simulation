@@ -159,7 +159,8 @@ class PoseDataset(Dataset):
 class PoseResNet18(nn.Module):
     def __init__(self):
         super(PoseResNet18, self).__init__()
-        self.backbone = models.resnet18(pretrained=True)
+        #self.backbone = models.resnet18(pretrained=True)
+        self.backbone = models.resnet18(pretrained=False)
         self.backbone.fc = nn.Linear(self.backbone.fc.in_features, 7)  # x_px, y_px, z, q0, q1, q2, q3
 
     def forward(self, x):
@@ -313,6 +314,12 @@ def quaternion_to_euler_deg(quat):
     euler_deg = rot_obj_adjusted.as_euler('xyz', degrees=True)
     return torch.tensor(euler_deg)
 
+def quaternion_geodesic_loss(q_pred, q_gt):
+    q_pred = q_pred / q_pred.norm(dim=-1, keepdim=True)
+    q_gt = q_gt / q_gt.norm(dim=-1, keepdim=True)
+    dot = torch.sum(q_pred * q_gt, dim=-1).clamp(-1, 1)
+    angle = 2 * torch.acos(torch.abs(dot))
+    return angle.mean()
 
 def train_eval(args, model, device, train_loader, val_loader):
     os.makedirs(args.output_dir, exist_ok=True)
@@ -347,7 +354,8 @@ def train_eval(args, model, device, train_loader, val_loader):
                 x_loss = criterion(x_px_pred, x_px.squeeze())
                 y_loss = criterion(y_px_pred, y_px.squeeze())
                 z_loss = criterion(z_pred, z.squeeze())
-                q_loss = criterion(quat_pred, quat)
+                q_loss = quaternion_geodesic_loss(quat_pred, quat)
+
 
                 loss = x_loss + y_loss + z_loss + q_loss
                 loss.backward()
