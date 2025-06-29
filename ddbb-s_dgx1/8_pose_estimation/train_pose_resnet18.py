@@ -143,14 +143,13 @@ class PoseResNet18(nn.Module):
     def forward(self, x):
         return self.backbone(x)
 
-def draw_pose_axes(img, quat, bbox=None, color_x=(0,0,255), color_y=(0,255,0), color_z=(255,0,0), length=80):
-    """
-    Dibuja sistema de coordenadas x,y,z en el centro de la imagen recortada, orientado por quaternion.
-    Si se pasa bbox=(xmin,ymin,xmax,ymax), dibuja en centro del bbox en img original.
-    """
+def draw_pose_axes(img, quat=None, bbox=None,
+                   color_x=(255,0,0), color_y=(0,255,0), color_z=(0,0,255),
+                   length=120):  # longitud aumentada
     img_draw = img.copy()
     draw = ImageDraw.Draw(img_draw)
 
+    # === Centro de referencia ===
     if bbox is not None:
         cx = (bbox[0]+bbox[2])/2
         cy = (bbox[1]+bbox[3])/2
@@ -158,13 +157,26 @@ def draw_pose_axes(img, quat, bbox=None, color_x=(0,0,255), color_y=(0,255,0), c
         w,h = img.size
         cx, cy = w//2, h//2
 
-    rot = R.from_quat(quat.cpu().numpy())
-    axes = rot.apply(np.eye(3))
+    if quat is not None:
+        # === Reconstrucción de orientación del objeto como en script 3D ===
+        rot_rel = R.from_quat(quat)
+        rot_cam = R.from_euler('x', 90, degrees=True)
+        rot_obj = rot_cam * rot_rel
+        rot_extra_x = R.from_euler('x', -90, degrees=True)
+        rot_obj_adjusted = rot_obj * rot_extra_x
 
-    for axis, color in zip(axes, [color_x, color_y, color_z]):
-        end_x = cx + axis[0] * length
-        end_y = cy - axis[1] * length  # Y invertido imagen
-        draw.line([(cx, cy), (end_x, end_y)], fill=color, width=5)
+        # === Obtener ejes transformados en WORLD ===
+        axes_obj = rot_obj_adjusted.apply(np.eye(3))
+
+        # === Proyección 2D ===
+        for axis_vec, color in zip(axes_obj, [color_x, color_y, color_z]):
+            dx = axis_vec[0]
+            dy = axis_vec[2]  # usar Z como eje vertical en imagen
+
+            end_x = cx + dx * length
+            end_y = cy - dy * length  # PIL: +Y abajo
+
+            draw.line([(cx, cy), (end_x, end_y)], fill=color, width=5)
 
     return img_draw
 
@@ -234,10 +246,13 @@ def quaternion_angle_error(q_pred, q_gt):
     return angle
 
 def quaternion_to_euler_deg(quat):
-    r = R.from_quat(quat.cpu().numpy())
-    euler_deg = r.as_euler('xyz', degrees=True)
+    rot_rel = R.from_quat(quat.cpu().numpy())
+    rot_cam = R.from_euler('x', 90, degrees=True)
+    rot_obj = rot_cam * rot_rel
+    rot_extra_x = R.from_euler('x', -90, degrees=True)
+    rot_obj_adjusted = rot_obj * rot_extra_x
+    euler_deg = rot_obj_adjusted.as_euler('xyz', degrees=True)
     return torch.tensor(euler_deg)
-
 
 
 def train_eval(args, model, device, train_loader, val_loader):

@@ -377,6 +377,16 @@ def process_object(object_class, base_path, sensor_output_dir, orientations_degr
                             y_norm = round(y_px / resolution_height, 6)
                             z_cm = round(z_m * 100, 6)
 
+                            print("[DEBUG] Quaternion raw (rel_rot):", rel_rot)
+                            print("[DEBUG] Imported obj rotation_euler (deg):", np.degrees(imported_obj.rotation_euler))
+                            print("[DEBUG] Imported obj rotation_quaternion:", imported_obj.rotation_quaternion)
+                            print("[DEBUG] Camera rotation_euler (deg):", np.degrees(camera_object.rotation_euler))
+                            print("[DEBUG] Camera rotation_quaternion:", camera_object.rotation_quaternion)
+
+
+                            print("[DEBUG] camera_object.matrix_world:", camera_object.matrix_world)
+                            print("[DEBUG] imported_obj.matrix_world:", imported_obj.matrix_world)
+
                             qw, qx, qy, qz = (
                                 round(rel_rot.w, 6),
                                 round(rel_rot.x, 6),
