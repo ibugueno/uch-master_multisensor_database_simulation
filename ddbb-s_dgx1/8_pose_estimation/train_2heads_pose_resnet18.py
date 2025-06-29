@@ -16,6 +16,7 @@ from scipy.spatial.transform import Rotation as R
 from collections import defaultdict
 from pathlib import Path
 import random
+import torch.nn.functional as F
 
 
 SENSOR_SHAPES = {
@@ -156,14 +157,22 @@ class PoseDataset(Dataset):
 
 
 
-class PoseResNet18(nn.Module):
+class PoseResNet18TwoHeads(nn.Module):
     def __init__(self):
-        super(PoseResNet18, self).__init__()
+        super(PoseResNet18TwoHeads, self).__init__()
         self.backbone = models.resnet18(pretrained=True)
-        self.backbone.fc = nn.Linear(self.backbone.fc.in_features, 7)  # x_px, y_px, z, q0, q1, q2, q3
+        num_feats = self.backbone.fc.in_features
+        self.backbone.fc = nn.Identity()  # remove original FC
+
+        self.head_pos = nn.Linear(num_feats, 3)   # x,y,z
+        self.head_quat = nn.Linear(num_feats, 4)  # q0,q1,q2,q3
 
     def forward(self, x):
-        return self.backbone(x)
+        feats = self.backbone(x)
+        pos = self.head_pos(feats)
+        quat = self.head_quat(feats)
+        quat = F.normalize(quat, dim=-1)  # ensure unit quaternion
+        return pos, quat
 
 
 def draw_pose_axes(img, quat=None, cx=None, cy=None, bbox=None,
@@ -340,18 +349,16 @@ def train_eval(args, model, device, train_loader, val_loader):
                 images, x_px, y_px, z, quat = images.to(device), x_px.to(device), y_px.to(device), z.to(device), quat.to(device)
                 optimizer.zero_grad()
                 
-                outputs = model(images)
-                x_px_pred, y_px_pred = outputs[:,0], outputs[:,1]
-                z_pred, quat_pred = outputs[:,2], outputs[:,3:]
-
-                x_loss = criterion(x_px_pred, x_px.squeeze())
-                y_loss = criterion(y_px_pred, y_px.squeeze())
-                z_loss = criterion(z_pred, z.squeeze())
+                pos_pred, quat_pred = model(images)
+                pos_gt = torch.cat([x_px, y_px, z], dim=1).squeeze()
+                pos_loss = criterion(pos_pred, pos_gt)
                 q_loss = criterion(quat_pred, quat)
 
-                loss = x_loss + y_loss + z_loss + 20*q_loss
+                loss = pos_loss + 20 * q_loss
+
                 loss.backward()
                 optimizer.step()
+
 
             model.eval()
             val_metrics = defaultdict(lambda: defaultdict(float))
@@ -362,12 +369,15 @@ def train_eval(args, model, device, train_loader, val_loader):
 
             with torch.no_grad():
                 for images, x_px, y_px, z, quat, img_names in tqdm(val_loader, desc=f"Epoch {epoch+1} [Val]"):
-
                     images, x_px, y_px, z, quat = images.to(device), x_px.to(device), y_px.to(device), z.to(device), quat.to(device)
+                    pos_pred, quat_pred = model(images)
 
-                    outputs = model(images)
-                    x_px_pred, y_px_pred = outputs[:,0], outputs[:,1]
-                    z_pred, quat_pred = outputs[:,2], outputs[:,3:]
+                    pos_gt = torch.cat([x_px, y_px, z], dim=1).squeeze()
+                    pos_loss_batch = criterion(pos_pred, pos_gt).item()
+                    q_loss_batch = criterion(quat_pred, quat).item()
+
+                    # Resto de métricas permanece igual
+                    x_px_pred, y_px_pred, z_pred = pos_pred[:,0], pos_pred[:,1], pos_pred[:,2]
 
                     x_mae_each = torch.abs(x_px_pred - x_px.squeeze()).cpu().numpy()
                     y_mae_each = torch.abs(y_px_pred - y_px.squeeze()).cpu().numpy()
@@ -432,8 +442,11 @@ def train_eval(args, model, device, train_loader, val_loader):
             val_pitch = sum(m['pitch'] for m in val_metrics.values()) / total_count
             val_yaw = sum(m['yaw'] for m in val_metrics.values()) / total_count
 
+            val_pos_loss = (val_mae_x + val_mae_y + val_mae_z) / 3
+            total_loss = val_pos_loss + 20 * val_q_mse
+
             writer.writerow([epoch+1,
-                             val_mae_x + val_mae_y + val_mae_z + val_q_mse,  # total loss
+                             total_loss, val_pos_loss, val_q_mse,
                              val_mae_x, val_mae_y, val_mae_z, val_q_mse,
                              val_mae_x, val_mae_y, val_mae_z, val_q_mse, val_q_angle,
                              val_roll, val_pitch, val_yaw])
@@ -487,7 +500,8 @@ if __name__ == "__main__":
 
     # === Modelo y device ===
     device = torch.device(f"cuda:{args.gpu}" if torch.cuda.is_available() else "cpu")
-    model = PoseResNet18().to(device)
+    model = PoseResNet18TwoHeads().to(device)
+
 
     train_eval(args, model, device, train_loader, val_loader)
 
