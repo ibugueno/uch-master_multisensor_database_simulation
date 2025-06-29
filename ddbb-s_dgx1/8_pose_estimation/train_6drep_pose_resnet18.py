@@ -363,10 +363,6 @@ def quat_to_rot_mat_torch(quat: torch.Tensor) -> torch.Tensor:
 
 
 def rot_mat_to_quat_torch(rot_mat):
-    """
-    Convierte batch de matrices de rotación (B,3,3) a quaternions (B,4).
-    Implementación puramente Torch.
-    """
     B = rot_mat.shape[0]
     quat = torch.empty((B,4), device=rot_mat.device)
     trace = rot_mat[:,0,0] + rot_mat[:,1,1] + rot_mat[:,2,2]
@@ -378,28 +374,35 @@ def rot_mat_to_quat_torch(rot_mat):
     quat[cond,2] = (rot_mat[cond,0,2] - rot_mat[cond,2,0]) / S
     quat[cond,3] = (rot_mat[cond,1,0] - rot_mat[cond,0,1]) / S
 
-    cond = ~cond
-    r00 = rot_mat[cond,0,0]
-    r11 = rot_mat[cond,1,1]
-    r22 = rot_mat[cond,2,2]
-    if (r00 > r11) & (r00 > r22):
-        S = torch.sqrt(1.0 + r00 - r11 - r22) * 2
-        quat[cond,0] = (rot_mat[cond,2,1] - rot_mat[cond,1,2]) / S
-        quat[cond,1] = 0.25 * S
-        quat[cond,2] = (rot_mat[cond,0,1] + rot_mat[cond,1,0]) / S
-        quat[cond,3] = (rot_mat[cond,0,2] + rot_mat[cond,2,0]) / S
-    elif r11 > r22:
-        S = torch.sqrt(1.0 + r11 - r00 - r22) * 2
-        quat[cond,0] = (rot_mat[cond,0,2] - rot_mat[cond,2,0]) / S
-        quat[cond,1] = (rot_mat[cond,0,1] + rot_mat[cond,1,0]) / S
-        quat[cond,2] = 0.25 * S
-        quat[cond,3] = (rot_mat[cond,1,2] + rot_mat[cond,2,1]) / S
-    else:
-        S = torch.sqrt(1.0 + r22 - r00 - r11) * 2
-        quat[cond,0] = (rot_mat[cond,1,0] - rot_mat[cond,0,1]) / S
-        quat[cond,1] = (rot_mat[cond,0,2] + rot_mat[cond,2,0]) / S
-        quat[cond,2] = (rot_mat[cond,1,2] + rot_mat[cond,2,1]) / S
-        quat[cond,3] = 0.25 * S
+    cond_neg = ~cond
+    r00 = rot_mat[cond_neg,0,0]
+    r11 = rot_mat[cond_neg,1,1]
+    r22 = rot_mat[cond_neg,2,2]
+
+    idx1 = (r00 > r11) & (r00 > r22)
+    idx2 = (r11 > r22) & (~idx1)
+    idx3 = (~idx1) & (~idx2)
+
+    # Branch 1
+    S1 = torch.sqrt(1.0 + r00[idx1] - r11[idx1] - r22[idx1]) * 2
+    quat[cond_neg][idx1,0] = (rot_mat[cond_neg][idx1,2,1] - rot_mat[cond_neg][idx1,1,2]) / S1
+    quat[cond_neg][idx1,1] = 0.25 * S1
+    quat[cond_neg][idx1,2] = (rot_mat[cond_neg][idx1,0,1] + rot_mat[cond_neg][idx1,1,0]) / S1
+    quat[cond_neg][idx1,3] = (rot_mat[cond_neg][idx1,0,2] + rot_mat[cond_neg][idx1,2,0]) / S1
+
+    # Branch 2
+    S2 = torch.sqrt(1.0 + r11[idx2] - r00[idx2] - r22[idx2]) * 2
+    quat[cond_neg][idx2,0] = (rot_mat[cond_neg][idx2,0,2] - rot_mat[cond_neg][idx2,2,0]) / S2
+    quat[cond_neg][idx2,1] = (rot_mat[cond_neg][idx2,0,1] + rot_mat[cond_neg][idx2,1,0]) / S2
+    quat[cond_neg][idx2,2] = 0.25 * S2
+    quat[cond_neg][idx2,3] = (rot_mat[cond_neg][idx2,1,2] + rot_mat[cond_neg][idx2,2,1]) / S2
+
+    # Branch 3
+    S3 = torch.sqrt(1.0 + r22[idx3] - r00[idx3] - r11[idx3]) * 2
+    quat[cond_neg][idx3,0] = (rot_mat[cond_neg][idx3,1,0] - rot_mat[cond_neg][idx3,0,1]) / S3
+    quat[cond_neg][idx3,1] = (rot_mat[cond_neg][idx3,0,2] + rot_mat[cond_neg][idx3,2,0]) / S3
+    quat[cond_neg][idx3,2] = (rot_mat[cond_neg][idx3,1,2] + rot_mat[cond_neg][idx3,2,1]) / S3
+    quat[cond_neg][idx3,3] = 0.25 * S3
 
     return quat
 
