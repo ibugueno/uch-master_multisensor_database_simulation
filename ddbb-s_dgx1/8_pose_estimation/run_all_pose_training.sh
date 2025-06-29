@@ -20,7 +20,7 @@ for sensor in "asus" "davis346" "evk4"; do
             gpu=$((base_gpu + 1))
         fi
 
-        session="training_seg_${sensor}_scene${scene}"
+        session="training_pose_${sensor}_scene${scene}"
 
         tmux new-session -d -s $session "
             CUDA_VISIBLE_DEVICES=$gpu python $SCRIPT_PATH \
