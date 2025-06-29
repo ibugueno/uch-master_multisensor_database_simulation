@@ -444,8 +444,8 @@ def train_eval(args, model, device, train_loader, val_loader):
                     err_x_cm_abs = torch.abs(err_x_cm).cpu().numpy()
                     err_y_cm_abs = torch.abs(err_y_cm).cpu().numpy()
 
-                    err_x_cm_all.extend(err_x_cm_abs.tolist())
-                    err_y_cm_all.extend(err_y_cm_abs.tolist())
+                    err_x_cm_all.extend(err_x_cm_abs.flatten().tolist())
+                    err_y_cm_all.extend(err_y_cm_abs.flatten().tolist())
 
                     x_mae_each = torch.abs(x_px_pred - x_px.squeeze()).cpu().numpy()
                     y_mae_each = torch.abs(y_px_pred - y_px.squeeze()).cpu().numpy()
