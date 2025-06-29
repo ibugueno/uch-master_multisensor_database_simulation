@@ -403,7 +403,7 @@ def rot_mat_to_quat_torch(rot_mat):
 
     return quat
 
-+
+
 def train_eval(args, model, device, train_loader, val_loader):
     os.makedirs(args.output_dir, exist_ok=True)
     set_seed(args.seed)
