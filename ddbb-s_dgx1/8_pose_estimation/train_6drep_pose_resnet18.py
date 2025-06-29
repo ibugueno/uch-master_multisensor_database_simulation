@@ -312,6 +312,15 @@ def quaternion_to_euler_deg(quat):
     euler_deg = rot_obj_adjusted.as_euler('xyz', degrees=True)
     return torch.tensor(euler_deg)
 
+def project_to_so3(rot_mat):
+    U, _, Vt = torch.svd(rot_mat)
+    R_proj = torch.matmul(U, Vt.transpose(-2,-1))
+    det = torch.det(R_proj)
+    # Si determinante < 0, reflejo: corrige
+    mask = (det < 0).unsqueeze(-1).unsqueeze(-1)
+    U[:,:,-1] *= -1
+    R_proj = torch.matmul(U, Vt.transpose(-2,-1))
+    return R_proj
 
 def rot6d_to_matrix(rot_6d):
     """
@@ -368,7 +377,8 @@ def rot_mat_to_quat_torch(rot_mat):
     trace = rot_mat[:,0,0] + rot_mat[:,1,1] + rot_mat[:,2,2]
 
     cond = trace > 0
-    S = torch.sqrt(trace[cond] + 1.0) * 2
+    S = torch.sqrt(torch.clamp(trace[cond] + 1.0, min=1e-8)) * 2
+
     quat[cond,0] = 0.25 * S
     quat[cond,1] = (rot_mat[cond,2,1] - rot_mat[cond,1,2]) / S
     quat[cond,2] = (rot_mat[cond,0,2] - rot_mat[cond,2,0]) / S
@@ -472,6 +482,7 @@ def train_eval(args, model, device, train_loader, val_loader):
                     rot6d_pred = outputs[:,3:9]
 
                     rot_mat_pred = rot6d_to_matrix(rot6d_pred)
+                    rot_mat_pred = project_to_so3(rot_mat_pred)
 
                     # Convertir matrices predichas a quaternions para métricas y visualización
                     quat_pred = rot_mat_to_quat_torch(rot_mat_pred)
