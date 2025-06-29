@@ -471,7 +471,7 @@ def train_eval(args, model, device, train_loader, val_loader):
                 z_loss = criterion(z_pred, z.squeeze())
                 q_loss = rotation_matrix_loss(rot_mat_pred, R_gt)
 
-                loss = x_loss + y_loss + z_loss + q_loss
+                loss = x_loss + y_loss + z_loss + 20 * q_loss
                 loss.backward()
                 optimizer.step()
 
